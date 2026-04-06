@@ -1,0 +1,17 @@
+{
+  "name": "coineasy-daily-briefing-bot",
+  "version": "1.0.0",
+  "description": "코인이지 데일리 브리핑 자동화 봇 - Telegram + 네이버 블로그 초안",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "briefing": "node src/index.js --run-now",
+    "test": "node src/test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2"
+  }
+}
