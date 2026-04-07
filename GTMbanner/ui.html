@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+    margin: 0;
+    padding: 16px;
+    background: #2c1810;
+    color: #fff;
+    font-size: 13px;
+  }
+  h1 {
+    font-size: 16px;
+    margin: 0 0 4px 0;
+    color: #00e676;
+    font-weight: 800;
+  }
+  .sub {
+    font-size: 11px;
+    color: #b8a890;
+    margin-bottom: 14px;
+  }
+  textarea {
+    width: 100%;
+    height: 220px;
+    background: #1a0f08;
+    color: #fff;
+    border: 1px solid #4a3520;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 11px;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+  textarea:focus {
+    outline: none;
+    border-color: #00b009;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  button {
+    flex: 1;
+    background: #00b009;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button:hover { background: #00d010; }
+  button.secondary {
+    background: #4a3520;
+    color: #fff;
+  }
+  button.secondary:hover { background: #5a4530; }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .status {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    min-height: 14px;
+  }
+  .status.ok { background: #003315; color: #00ff80; }
+  .status.err { background: #331a0a; color: #ff8060; }
+  .status.info { background: #1f1408; color: #b8a890; }
+</style>
+</head>
+<body>
+  <h1>CoinEasy Daily Updater</h1>
+  <div class="sub">텔레그램에서 받은 JSON을 붙여넣고 Apply</div>
+
+  <textarea id="payload" placeholder='{"frame_id":"28334:14","texts":{...}}'></textarea>
+
+  <div class="row">
+    <button class="secondary" id="locate">🎯 템플릿 찾기</button>
+    <button class="secondary" id="paste">📋 클립보드 붙여넣기</button>
+  </div>
+
+  <div class="row">
+    <button id="apply">✨ Apply</button>
+    <button id="export">📤 Export PNG</button>
+  </div>
+
+  <div class="status info" id="status">JSON을 붙여넣고 Apply 버튼을 눌러주세요</div>
+
+<script>
+const ta = document.getElementById('payload');
+const status = document.getElementById('status');
+
+function setStatus(msg, type) {
+  status.textContent = msg;
+  status.className = 'status ' + (type || 'info');
+}
+
+document.getElementById('locate').onclick = () => {
+  parent.postMessage({ pluginMessage: { type: 'select-frame' } }, '*');
+};
+
+document.getElementById('paste').onclick = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    ta.value = text;
+    setStatus('클립보드에서 붙여넣음', 'info');
+  } catch (e) {
+    setStatus('클립보드 접근 실패 — 직접 붙여넣으세요', 'err');
+  }
+};
+
+document.getElementById('apply').onclick = () => {
+  const raw = ta.value.trim();
+  if (!raw) {
+    setStatus('JSON을 입력해주세요', 'err');
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (e) {
+    setStatus('JSON 파싱 에러: ' + e.message, 'err');
+    return;
+  }
+  setStatus('적용 중...', 'info');
+  parent.postMessage({ pluginMessage: { type: 'apply', payload } }, '*');
+};
+
+document.getElementById('export').onclick = () => {
+  setStatus('Export 중...', 'info');
+  parent.postMessage({ pluginMessage: { type: 'export' } }, '*');
+};
+
+window.onmessage = (event) => {
+  const msg = event.data.pluginMessage;
+  if (!msg) return;
+  if (msg.type === 'result') {
+    if (msg.success) {
+      const errs = (msg.data.errors || []).length;
+      setStatus(`✅ ${msg.data.updated}개 업데이트${errs ? ` (${errs}개 에러)` : ''}`, 'ok');
+    } else {
+      setStatus('❌ ' + msg.error, 'err');
+    }
+  } else if (msg.type === 'exported') {
+    setStatus('✅ Export 완료 — 다운로드 시작', 'ok');
+    const blob = new Blob([msg.bytes], { type: 'image/png' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'coineasy_daily.png';
+    a.click();
+  }
+};
+</script>
+</body>
+</html>

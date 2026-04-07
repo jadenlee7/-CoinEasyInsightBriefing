@@ -1,0 +1,341 @@
+// figma-daily/figmaDataBuilder.js
+// ===============================
+// 매일 아침 시장 데이터를 수집해서 Figma 플러그인이 소비할 JSON 페이로드를 빌드.
+//
+// 데이터 소스:
+// - CoinGecko (BTC/ETH/SOL/SUI/XRP 가격 + 24h 변동률)
+// - alternative.me Fear & Greed Index
+// - 업비트 + ER-API (김치 프리미엄)
+// - DefiLlama (DeFi TVL)
+// - CoinGecko Trending (TOP 3)
+// - Anthropic Claude API (오늘의 인용문)
+//
+// 외부 의존성: none (Node 18+ native fetch 사용)
+
+const COIN_IDS = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+  SUI: "sui",
+  XRP: "ripple",
+};
+
+const WEEKDAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+
+// ─── HTTP helpers ───────────────────────────────────────
+
+async function fetchJson(url, options = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), options.timeout || 15000);
+  try {
+    const r = await fetch(url, { ...options, signal: ctrl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    return await r.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// ─── Data fetchers ──────────────────────────────────────
+
+async function fetchPricesCoingecko() {
+  const ids = Object.values(COIN_IDS).join(",");
+  const url =
+    `https://api.coingecko.com/api/v3/simple/price` +
+    `?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
+  const data = await fetchJson(url);
+  const out = {};
+  for (const [sym, gid] of Object.entries(COIN_IDS)) {
+    const d = data[gid] || {};
+    out[sym] = {
+      price: d.usd || 0,
+      change_24h: d.usd_24h_change || 0,
+    };
+  }
+  return out;
+}
+
+async function fetchFearGreed() {
+  const data = await fetchJson("https://api.alternative.me/fng/?limit=1");
+  const d = data.data[0];
+  return {
+    value: parseInt(d.value, 10),
+    classification: d.value_classification, // "Fear", "Greed", etc.
+  };
+}
+
+async function fetchKimchiPremium() {
+  try {
+    const [upbit, cg, fx] = await Promise.all([
+      fetchJson("https://api.upbit.com/v1/ticker?markets=KRW-BTC"),
+      fetchJson("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"),
+      fetchJson("https://open.er-api.com/v6/latest/USD"),
+    ]);
+    const krw_btc = upbit[0].trade_price;
+    const usd_btc = cg.bitcoin.usd;
+    const usd_krw = fx.rates.KRW;
+    const synthetic = krw_btc / usd_krw;
+    const premium_pct = ((synthetic - usd_btc) / usd_btc) * 100;
+    return {
+      rate_krw_per_usdt: Math.round(usd_krw),
+      premium_pct: Math.round(premium_pct * 100) / 100,
+    };
+  } catch (e) {
+    console.warn("[kimchi_premium] error:", e.message);
+    return { rate_krw_per_usdt: 1500, premium_pct: 0 };
+  }
+}
+
+async function fetchDefiHot() {
+  try {
+    const protos = await fetchJson("https://api.llama.fi/protocols", { timeout: 25000 });
+    const watch = ["Lido", "Polygon zkEVM Bridge", "Maple"];
+    const result = [];
+    for (const name of watch) {
+      const p = protos.find((x) => x.name === name);
+      if (!p) continue;
+      result.push({
+        name,
+        tvl_usd: p.tvl || 0,
+        change_24h: Math.round((p.change_1d || 0) * 100) / 100,
+      });
+    }
+    return result;
+  } catch (e) {
+    console.warn("[defi_hot] error:", e.message);
+    return [];
+  }
+}
+
+async function fetchTrending() {
+  try {
+    const data = await fetchJson("https://api.coingecko.com/api/v3/search/trending");
+    const coins = (data.coins || []).slice(0, 3);
+    if (!coins.length) return [];
+
+    const ids = coins.map((c) => c.item.id).join(",");
+    const prices = await fetchJson(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+    );
+
+    return coins.map((c) => {
+      const item = c.item;
+      const chg = (prices[item.id] && prices[item.id].usd_24h_change) || 0;
+      return {
+        symbol: item.symbol.toUpperCase(),
+        name: item.name,
+        change_24h: Math.round(chg * 100) / 100,
+      };
+    });
+  } catch (e) {
+    console.warn("[trending] error:", e.message);
+    return [];
+  }
+}
+
+async function generateQuote(marketSummary) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return {
+      line1: "오늘의 시장은 변화의 연속",
+      line2: "차분하게, 그러나 기민하게 대응하자",
+    };
+  }
+
+  const prompt = `너는 코인이지(CoinEasy)의 데일리 마켓 큐레이터야. 오늘의 시장 상황을 한 문장의 짧은 통찰로 표현해줘.
+
+오늘의 시장 요약:
+${marketSummary}
+
+요구사항:
+- 2줄로 작성 (line1, line2)
+- line1: 시장의 현재 상태나 모순점 포착 (한국어, 25자 이내)
+- line2: 그에 대한 짧은 조언이나 관점 (한국어, 30자 이내)
+- 톤: 차분하고 약간 위트있는, 베테랑 트레이더 친구처럼
+- 따옴표나 부호는 빼고 텍스트만
+- JSON 형식으로 출력: {"line1": "...", "line2": "..."}`;
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!r.ok) throw new Error(`Anthropic API ${r.status}`);
+    const data = await r.json();
+    let text = data.content[0].text.trim();
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(text);
+    return { line1: parsed.line1, line2: parsed.line2 };
+  } catch (e) {
+    console.warn("[generate_quote] error:", e.message);
+    return {
+      line1: "변동성 속에서도 본질은 변하지 않는다",
+      line2: "차분히 데이터를 보고 판단하자",
+    };
+  }
+}
+
+// ─── Formatters ─────────────────────────────────────────
+
+function fmtPrice(p) {
+  if (p >= 1000) return `$${Math.round(p).toLocaleString("en-US")}`;
+  if (p >= 10) return `$${p.toFixed(1)}`;
+  if (p >= 1) return `$${p.toFixed(2)}`;
+  return `$${p.toFixed(3)}`;
+}
+
+function fmtPct(v) {
+  const sign = v >= 0 ? "+" : "";
+  return `${sign}${v.toFixed(2)}%`;
+}
+
+function fmtDateKr(d) {
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAY_KO[d.getDay()]}요일 아침`;
+}
+
+function fmtTvl(v) {
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  return `$${Math.round(v).toLocaleString("en-US")}`;
+}
+
+function kimchiNote(pct) {
+  if (Math.abs(pct) < 0.5) return "거의 제로! 글로벌 동조화 완벽";
+  if (pct > 2) return "한국 매수세 강함 — 차익 기회 주의";
+  if (pct < -1) return "역김프 — 글로벌 강세 신호";
+  return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}% — 정상 범위`;
+}
+
+function fearNote(fg, marketChange) {
+  if (fg < 25 && marketChange > 0) return "두려움인데 가격은 상승? 역설적 신호!";
+  if (fg < 25) return "극단적 공포 — 분할 매수 검토 구간";
+  if (fg > 75 && marketChange < 0) return "탐욕인데 조정? 과열 경계";
+  if (fg > 75) return "탐욕 구간 — 차익 실현 검토";
+  if (fg < 45) return "공포 우세 — 신중한 접근";
+  if (fg > 55) return "탐욕 우세 — 리스크 관리";
+  return "중립 — 추세 확인 필요";
+}
+
+// ─── Main payload builder ───────────────────────────────
+
+async function buildPayload(now = new Date()) {
+  // Parallel fetch
+  const [prices, fearGreed, kimchi, defi, trending] = await Promise.all([
+    fetchPricesCoingecko(),
+    fetchFearGreed(),
+    fetchKimchiPremium(),
+    fetchDefiHot(),
+    fetchTrending(),
+  ]);
+
+  // Pad to 3 items
+  while (defi.length < 3) defi.push({ name: "—", tvl_usd: 0, change_24h: 0 });
+  while (trending.length < 3) trending.push({ symbol: "—", name: "—", change_24h: 0 });
+
+  // Avg market change (rough proxy)
+  const symbols = Object.keys(COIN_IDS);
+  const avgChange =
+    symbols.reduce((s, sym) => s + prices[sym].change_24h, 0) / symbols.length;
+
+  // Generate quote
+  const summary =
+    `BTC ${fmtPrice(prices.BTC.price)} (${fmtPct(prices.BTC.change_24h)}), ` +
+    `Fear&Greed ${fearGreed.value} (${fearGreed.classification}), ` +
+    `DeFi: ${defi.slice(0, 3).map((d) => `${d.name} ${fmtPct(d.change_24h)}`).join(", ")}`;
+  const quote = await generateQuote(summary);
+
+  const texts = {
+    date_label: fmtDateKr(now),
+    btc_price: fmtPrice(prices.BTC.price),
+    btc_change: fmtPct(prices.BTC.change_24h),
+    market_change: `MARKET ${fmtPct(avgChange)}`,
+    eth_price: fmtPrice(prices.ETH.price),
+    eth_change: fmtPct(prices.ETH.change_24h),
+    sol_price: fmtPrice(prices.SOL.price),
+    sol_change: fmtPct(prices.SOL.change_24h),
+    sui_price: fmtPrice(prices.SUI.price),
+    sui_change: fmtPct(prices.SUI.change_24h),
+    xrp_price: fmtPrice(prices.XRP.price),
+    xrp_change: fmtPct(prices.XRP.change_24h),
+    kimchi_rate: `환율: ₩${kimchi.rate_krw_per_usdt.toLocaleString("ko-KR")}/USDT`,
+    kimchi_premium: `${kimchi.premium_pct.toFixed(2)}%`,
+    kimchi_note: kimchiNote(kimchi.premium_pct),
+    fear_value: String(fearGreed.value),
+    fear_label: fearGreed.classification,
+    fear_note: fearNote(fearGreed.value, avgChange),
+    defi_1_name: defi[0].name,
+    defi_1_note: `TVL ${fmtTvl(defi[0].tvl_usd)}`,
+    defi_1_change: fmtPct(defi[0].change_24h),
+    defi_2_name: defi[1].name,
+    defi_2_note: "",
+    defi_2_change: fmtPct(defi[1].change_24h),
+    defi_3_name: defi[2].name,
+    defi_3_note: "",
+    defi_3_change: fmtPct(defi[2].change_24h),
+    trend_1_name: `${trending[0].symbol} (${trending[0].name})`,
+    trend_1_change: fmtPct(trending[0].change_24h),
+    trend_2_name: `${trending[1].symbol} (${trending[1].name})`,
+    trend_2_change: fmtPct(trending[1].change_24h),
+    trend_3_name: `${trending[2].symbol} (${trending[2].name})`,
+    trend_3_change: fmtPct(trending[2].change_24h),
+    quote_line1: quote.line1,
+    quote_line2: quote.line2,
+  };
+
+  // Color map (green/red)
+  const changeValues = {
+    btc_change: prices.BTC.change_24h,
+    eth_change: prices.ETH.change_24h,
+    sol_change: prices.SOL.change_24h,
+    sui_change: prices.SUI.change_24h,
+    xrp_change: prices.XRP.change_24h,
+    defi_1_change: defi[0].change_24h,
+    defi_2_change: defi[1].change_24h,
+    defi_3_change: defi[2].change_24h,
+    trend_1_change: trending[0].change_24h,
+    trend_2_change: trending[1].change_24h,
+    trend_3_change: trending[2].change_24h,
+  };
+  const colors = {};
+  for (const [k, v] of Object.entries(changeValues)) {
+    colors[k] = v >= 0 ? "#00b009" : "#ff1f1f";
+  }
+
+  return {
+    frame_id: "28334:14",
+    generated_at: now.toISOString(),
+    texts,
+    gauge: { fill_pct: fearGreed.value / 100 },
+    colors,
+  };
+}
+
+module.exports = {
+  buildPayload,
+  // exported for testing/reuse
+  fetchPricesCoingecko,
+  fetchFearGreed,
+  fetchKimchiPremium,
+  fetchDefiHot,
+  fetchTrending,
+  generateQuote,
+};
+
+// CLI test
+if (require.main === module) {
+  buildPayload()
+    .then((p) => console.log(JSON.stringify(p, null, 2)))
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    });
+}
