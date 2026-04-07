@@ -10,7 +10,7 @@
  *  4) 트렌딩/DeFi 카드
  *  5) 아웃트로 카드 (CTA - 텔레그램 유입)
  */
-import { exec } from 'child_process';
+import { exec } from 'child_process'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { promisify } from 'util';
@@ -259,12 +259,12 @@ function wrapText(text, maxChars) {
 async function generateVideo(audioPath, outputPath, duration, cards) {
    console.log('[FFmpeg] 인포그래픽 카드 영상 합성 중...');
 
-  const filterComplex = buildCardFilters(cards, duration); const filterPath = '/tmp/shorts/filter.txt'; await writeFile(filterPath, filterComplex);
+  const filterComplex = buildCardFilters(cards, duration);
 
   const cmd = `ffmpeg -y \
    -f lavfi -i "color=c=${COLORS.bg}:s=1080x1920:d=${duration},format=yuv420p" \
    -i "${audioPath}" \
-   -filter_script:v ${filterPath} \
+   -vf "${filterComplex}" \
    -c:v libx264 -preset fast -crf 23 \
    -c:a aac -b:a 128k \
    -shortest \
@@ -363,10 +363,10 @@ function buildCardsFromData(script, data, dateStr) {
    const eth = data?.market?.[1];
    cards.push({
         type: 'btc',
-        price: btc ? `$${Number(btc.price).toLocaleString()}` : '$--,---',
+        price: btc ? `${Number(btc.price).toLocaleString()} USD` : '--,--- USD',
         change: btc ? `${btc.change24h}%` : '0%',
         changeNum: btc ? parseFloat(btc.change24h) : 0,
-        ethPrice: eth ? `$${Number(eth.price).toLocaleString()}` : '',
+        ethPrice: eth ? `${Number(eth.price).toLocaleString()} USD` : '',
         ethChange: eth ? `${eth.change24h}%` : '',
         ethChangeNum: eth ? parseFloat(eth.change24h) : 0,
         subtitle: subtitles.slice(subsPerCard, subsPerCard * 2).join(' '),
