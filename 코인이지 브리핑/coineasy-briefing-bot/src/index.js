@@ -22,6 +22,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 
 // ============================================================
+import { runDailyFigma } from './figma-daily/runDailyFigma.js';
 // 환경변수 로드
 // ============================================================
 const CONFIG = {
@@ -241,6 +242,16 @@ if (runNow) {
               runBriefingPipeline();
   });
 
+
+              // Figma 데일리 카드 - 본 브리핑 5분 전에 미리보기 전송
+              const figmaUtcHour = (CONFIG.briefingHour - 9 + 24) % 24;
+              const figmaMinute = Math.max(0, CONFIG.briefingMinute - 5);
+              const figmaCron = `${figmaMinute} ${figmaUtcHour} * * *`;
+              console.log(`🖼️ Figma 카드: 매일 ${CONFIG.briefingHour}:${String(figmaMinute).padStart(2, '0')} KST (cron: ${figmaCron} UTC)`);
+              cron.schedule(figmaCron, () => {
+                              console.log(`\n🖼️ Figma 데일리 트리거 (${new Date().toISOString()})`);
+                              runDailyFigma();
+              });
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
 
   // 시작 시 1회 테스트 실행
