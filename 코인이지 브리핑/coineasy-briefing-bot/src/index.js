@@ -276,6 +276,12 @@ if (runNow) {
   // Railway에서 프로세스 유지
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
 
-  // 시작 시 자동 실행은 비활성화 (Railway 재시작 루프로 인한 중복 발송 방지)
-  // 즉시 1회 실행이 필요하면 `npm run briefing` 또는 `node src/index.js --run-now` 사용
+  // 시작 시 자동 실행은 기본 비활성화 (Railway 재시작 루프로 인한 중복 발송 방지).
+  // 환경변수 RUN_ON_START=true 일 때만 시작 시 1회 실행 (테스트/즉시 발송용).
+  // 사용법: Railway 대시보드 → Variables → RUN_ON_START=true 추가 → 재배포 →
+  //         공지방에 1회 발송 확인 후 변수 삭제(또는 false 로 변경).
+  if (process.env.RUN_ON_START === 'true') {
+    console.log('🚀 RUN_ON_START=true → 시작 시 1회 실행');
+    runBriefingPipeline();
+  }
 }
