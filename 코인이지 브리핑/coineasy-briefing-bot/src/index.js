@@ -84,24 +84,24 @@ async function runBriefingPipeline() {
                     console.log('\n⏭️ Step 3/7: Figma 배너 스킵 (FIGMA_TOKEN 미설정)');
           }
 
-        // Step 4: 텔레그램 발송 (개인톡)
-        console.log('\n📤 Step 4/7: 텔레그램 발송 중 (개인톡)...');
-          if (CONFIG.chatId && CONFIG.botToken) {
+        // Step 4: 텔레그램 발송 (코인이지 공지방)
+        console.log('\n📤 Step 4/7: 텔레그램 발송 중 (공지방)...');
+          if (CONFIG.channelId && CONFIG.botToken) {
                     // 배너 이미지가 있으면 사진+캡션으로 발송
             if (bannerData && bannerData.buffer) {
                         const photoSuccess = await sendTelegramPhoto(
                                       bannerData.buffer,
                                       telegramBriefing,
-                                      CONFIG.chatId,
+                                      CONFIG.channelId,
                                       CONFIG.botToken
                                     );
-                        console.log(`  ${photoSuccess ? '✅' : '❌'} 개인톡 배너+브리핑 발송: ${CONFIG.chatId}`);
+                        console.log(`  ${photoSuccess ? '✅' : '❌'} 공지방 배너+브리핑 발송: ${CONFIG.channelId}`);
 
                       // 캡션이 1024자 넘으면 나머지는 텍스트로 추가 발송
                       if (telegramBriefing.length > 1020) {
                                     await sendTelegramMessage(
                                                     telegramBriefing,
-                                                    CONFIG.chatId,
+                                                    CONFIG.channelId,
                                                     CONFIG.botToken
                                                   );
                                     console.log(`  ✅ 전체 브리핑 텍스트 추가 발송`);
@@ -110,13 +110,13 @@ async function runBriefingPipeline() {
                         // 배너 없으면 텍스트만 발송
                       const success = await sendTelegramMessage(
                                     telegramBriefing,
-                                    CONFIG.chatId,
+                                    CONFIG.channelId,
                                     CONFIG.botToken
                                   );
-                        console.log(`  ${success ? '✅' : '❌'} 개인톡 텍스트 발송: ${CONFIG.chatId}`);
+                        console.log(`  ${success ? '✅' : '❌'} 공지방 텍스트 발송: ${CONFIG.channelId}`);
             }
           } else {
-                    console.log('  ⚠️ TELEGRAM_CHAT_ID 미설정 - 개인톡 발송 스킵');
+                    console.log('  ⚠️ TELEGRAM_CHANNEL_ID 미설정 - 공지방 발송 스킵');
           }
 
         // Step 5: 네이버 블로그 초안 저장 + 개인톡 전송
@@ -249,28 +249,33 @@ if (runNow) {
               process.exit(0);
       });
 } else {
-      // Cron 모드 - KST를 UTC로 변환
-  const utcHour = (CONFIG.briefingHour - 9 + 24) % 24; // KST → UTC
-  const cronExpression = `${CONFIG.briefingMinute} ${utcHour} * * *`;
+      // Cron 모드 - 아침 / 점심 / 저녁 (KST) — node-cron timezone 옵션 사용
+  const schedules = [
+    { label: '아침', cron: '0 8 * * *' },   // 08:00 KST
+    { label: '점심', cron: '0 12 * * *' },  // 12:00 KST
+    { label: '저녁', cron: '0 18 * * *' },  // 18:00 KST
+  ];
 
   console.log('🤖 코인이지 데일리 브리핑 봇 가동!');
-      console.log(`⏰ 스케줄: 매일 ${CONFIG.briefingHour}:${String(CONFIG.briefingMinute).padStart(2, '0')} KST (cron: ${cronExpression} UTC)`);
-      console.log(`📢 채널: ${CONFIG.channelId || '미설정'}`);
-      console.log(`💬 채팅방: ${CONFIG.chatId || '미설정'}`);
+      console.log(`⏰ 스케줄: ${schedules.map(s => `${s.label}(${s.cron} KST)`).join(', ')}`);
+      console.log(`📢 공지방 (브리핑): ${CONFIG.channelId || '미설정'}`);
+      console.log(`💬 개인 DM (블로그 초안): ${CONFIG.chatId || '미설정'}`);
       console.log(`📝 블로그 초안: ${CONFIG.saveBlogDraft ? '활성화' : '비활성화'}`);
       console.log(`🐦 X 포스팅: ${CONFIG.enableXPost ? '활성화' : '비활성화'}`);
       console.log(`🎬 YouTube Shorts: ${CONFIG.enableYouTube ? '활성화' : '비활성화'}`);
       console.log(`🎨 Figma 배너: ${CONFIG.enableFigmaBanner ? '활성화' : '비활성화'}`);
       console.log('');
 
-  cron.schedule(cronExpression, () => {
-          console.log(`\n⏰ Cron 트리거 (${new Date().toISOString()})`);
-          runBriefingPipeline();
-  });
+  for (const s of schedules) {
+    cron.schedule(s.cron, () => {
+            console.log(`\n⏰ Cron 트리거 [${s.label}] (${new Date().toISOString()})`);
+            runBriefingPipeline();
+    }, { timezone: 'Asia/Seoul' });
+  }
 
   // Railway에서 프로세스 유지
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
 
-  // 시작 시 1회 테스트 실행 (선택사항 - 주석 해제하면 시작시 바로 실행)
-    runBriefingPipeline();
+  // 시작 시 자동 실행은 비활성화 (Railway 재시작 루프로 인한 중복 발송 방지)
+  // 즉시 1회 실행이 필요하면 `npm run briefing` 또는 `node src/index.js --run-now` 사용
 }
