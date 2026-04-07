@@ -13,7 +13,7 @@
 import cron from 'node-cron';
 import { collectAllData } from './fetcher.js';
 import { generateTelegramBriefing, generateBlogDraft, generateXPost, generateShortsScript } from './generator.js';
-import { broadcastBriefing } from './telegram.js';
+    import { sendTelegramMessage, broadcastBriefing } from './telegram.js';
 import { postToX } from './x-poster.js';
 import { createShortsVideo, cleanupTempFiles } from './video-generator.js';
 import { uploadToYouTube } from './youtube-uploader.js';
@@ -68,21 +68,18 @@ async function runBriefingPipeline() {
                       console.log('--- 미리보기 끝 ---\n');
           }
 
-          // Step 3: 텔레그램 발송
-          console.log('\n📤 Step 3/6: 텔레그램 발송 중...');
-            const channels = [CONFIG.channelId, CONFIG.chatId].filter(Boolean);
-            if (channels.length > 0 && CONFIG.botToken) {
-                        const results = await broadcastBriefing(
-                                      telegramBriefing,
-                                      CONFIG.botToken,
-                                      channels
-                                    );
-                        results.forEach(r => {
-                                      console.log(`  ${r.success ? '✅' : '❌'} ${r.chatId}`);
-                        });
-            } else {
-                        console.log('  ⚠️ 텔레그램 미설정 - 발송 스킵');
-            }
+                  // Step 3: 텔레그램 발송 (개인톡만)
+                  console.log('\n📤 Step 3/6: 텔레그램 발송 중 (개인톡)...');
+                  if (CONFIG.chatId && CONFIG.botToken) {
+                                      const success = await sendTelegramMessage(
+                                                              telegramBriefing,
+                                                              CONFIG.chatId,
+                                                              CONFIG.botToken
+                                                          );
+                                      console.log(`  ${success ? '✅' : '❌'} 개인톡 발송: ${CONFIG.chatId}`);
+                  } else {
+                                      console.log('  ⚠️ TELEGRAM_CHAT_ID 미설정 - 개인톡 발송 스킵');
+                  }
 
           // Step 4: 네이버 블로그 초안 저장 (파일만)
           if (CONFIG.saveBlogDraft) {
@@ -95,6 +92,18 @@ async function runBriefingPipeline() {
                                     const filename = `${draftsDir}/blog_${dateStr}.md`;
                                     await writeFile(filename, blogDraft, 'utf-8');
                                     console.log(`  ✅ 블로그 초안 저장: ${filename}`);
+
+                                                  // 블로그 초안을 개인톡으로 전송
+                                                  if (CONFIG.chatId && CONFIG.botToken) {
+                                                                                  const blogHeader = `📝 *네이버 블로그 초안* (${dateStr})\n${'─'.repeat(30)}\n\n`;
+                                                                                  const blogMessage = blogHeader + blogDraft;
+                                                                                  const blogSent = await sendTelegramMessage(
+                                                                                                                      blogMessage,
+                                                                                                                      CONFIG.chatId,
+                                                                                                                      CONFIG.botToken
+                                                                                                                  );
+                                                                                  console.log(`  ${blogSent ? '✅' : '❌'} 블로그 초안 개인톡 전송`);
+                                                  }
                       } else {
                                     console.log('  ⚠️ 블로그 초안 생성 실패');
                       }
@@ -223,5 +232,5 @@ if (runNow) {
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
 
   // 시작 시 1회 테스트 실행 (선택사항 - 주석 해제하면 시작시 바로 실행)
-  // runBriefingPipeline();
+      runBriefingPipeline();
 }
