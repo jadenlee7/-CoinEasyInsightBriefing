@@ -259,12 +259,12 @@ function wrapText(text, maxChars) {
 async function generateVideo(audioPath, outputPath, duration, cards) {
    console.log('[FFmpeg] 인포그래픽 카드 영상 합성 중...');
 
-  const filterComplex = buildCardFilters(cards, duration);
+  const filterComplex = buildCardFilters(cards, duration); const filterPath = '/tmp/shorts/filter.txt'; await writeFile(filterPath, filterComplex);
 
   const cmd = `ffmpeg -y \
    -f lavfi -i "color=c=${COLORS.bg}:s=1080x1920:d=${duration},format=yuv420p" \
    -i "${audioPath}" \
-   -vf "${filterComplex}" \
+   -filter_script:v ${filterPath} \
    -c:v libx264 -preset fast -crf 23 \
    -c:a aac -b:a 128k \
    -shortest \
