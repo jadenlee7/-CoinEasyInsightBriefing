@@ -241,3 +241,80 @@ export async function generateXPost(data, telegramBriefing) {
         return null;
   }
 }
+
+// ============================================================
+// YouTube Shorts 스크립트 생성
+// ============================================================
+const SHORTS_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 YouTube Shorts 스크립트 라이터입니다.
+30초 내외의 짧은 한국어 나레이션 스크립트를 작성합니다.
+
+## 핵심 규칙
+- 나레이션 전체 길이: 한국어 기준 150-200자 (읽으면 약 25-35초)
+- TTS로 읽힐 텍스트이므로 자연스러운 구어체
+- 특수문자, 이모지 사용 금지 (TTS가 읽을 수 없음)
+- 달러 기호 대신 "달러", 퍼센트 기호 대신 "퍼센트"로 표기
+- 숫자는 읽기 쉽게 (예: 84200달러 → "8만 4천 2백 달러")
+
+## 구조
+1. 훅 (3초): 오늘의 핵심 한 줄
+2. 본문 (20초): BTC 가격 + 핵심 지표 1-2개 (공포탐욕, 김프 등)
+3. CTA (5초): "코인이지 텔레그램에서 매일 아침 브리핑 받아보세요"
+
+## 자막 분할
+나레이션을 6-8개의 짧은 자막 라인으로 분할해서 제공
+각 라인은 10-20자 이내
+
+## 출력 형식 (반드시 이 JSON 형식으로)
+{
+  "narration": "전체 나레이션 텍스트",
+    "subtitleLines": ["자막1", "자막2", "자막3", ...],
+      "title": "YouTube 쇼츠 제목 (50자 이내, #Shorts 포함)"
+      }`;
+
+export async function generateShortsScript(data, telegramBriefing) {
+        console.log('[쇼츠 스크립트] YouTube Shorts 스크립트 생성 중...');
+
+        const dataPrompt = `
+        오늘 날짜: ${data.dateKST}
+
+        === 핵심 데이터 ===
+        BTC: ${data.market?.[0] ? `${data.market[0].price?.toLocaleString()}달러 (24시간: ${data.market[0].change24h}%)` : '없음'}
+        ETH: ${data.market?.[1] ? `${data.market[1].price?.toLocaleString()}달러 (24시간: ${data.market[1].change24h}%)` : '없음'}
+        공포/탐욕: ${data.fearGreed ? `${data.fearGreed.value} (${data.fearGreed.label})` : '없음'}
+        김치프리미엄: ${data.kimchi ? `${data.kimchi.premium}%` : '없음'}
+
+        === 텔레그램 브리핑 (참고) ===
+        ${telegramBriefing}
+        `;
+
+        try {
+                    const response = await client.messages.create({
+                                    model: 'claude-sonnet-4-20250514',
+                                    max_tokens: 1000,
+                                    system: SHORTS_SYSTEM_PROMPT,
+                                    messages: [
+                                        {
+                                                                role: 'user',
+                                                                content: `아래 데이터를 기반으로 YouTube Shorts 나레이션 스크립트를 JSON 형식으로 작성해줘.\n\n${dataPrompt}`,
+                                        },
+                                                    ],
+                    });
+
+                    const text = response.content[0]?.text || '';
+
+                    // JSON 파싱
+                    const jsonMatch = text.match(/\{[\s\S]*\}/);
+                    if (!jsonMatch) {
+                                    console.error('[쇼츠 스크립트] JSON 파싱 실패');
+                                    return null;
+                    }
+
+                    const script = JSON.parse(jsonMatch[0]);
+                    console.log(`[쇼츠 스크립트] 완료 (나레이션: ${script.narration?.length}자, 자막: ${script.subtitleLines?.length}개)`);
+                    return script;
+
+        } catch (err) {
+                    console.error(`[쇼츠 스크립트 에러] ${err.message}`);
+                    return null;
+        }
+}
