@@ -381,7 +381,7 @@ function buildCardsFromData(script, data, dateStr) {
         fearGreedLabel: fg?.label || '',
         fgColor: fg ? getFearGreedColor(fg.value) : COLORS.gray,
         kimchiPremium: kimchi?.premium || '0',
-        kimchiDetail: kimchi ? `업비트 ${Number(kimchi.upbitBtcKrw).toLocaleString()}원` : '',
+        kimchiDetail: kimchi ? `업비트 ${kimchi.upbitBtcKrw}원` : '',
         subtitle: subtitles.slice(subsPerCard * 2, subsPerCard * 3).join(' '),
    });
 
