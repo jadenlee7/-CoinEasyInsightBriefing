@@ -41,8 +41,21 @@ const CONFIG = {
 // ============================================================
 // 메인 브리핑 파이프라인
 // ============================================================
+// 중복 발송 방지용 최소 간격 가드 (30분). cron / 재시작 / 수동 어떤 경로로
+// 들어와도 30분 내 연속 실행은 스킵한다. 정상 스케줄(4~6시간 간격)에는 영향 없음.
+const MIN_RUN_INTERVAL_MS = 30 * 60 * 1000;
+let lastRunAt = 0;
+
 async function runBriefingPipeline() {
-      const startTime = Date.now();
+      const now = Date.now();
+      if (now - lastRunAt < MIN_RUN_INTERVAL_MS) {
+            const remainingMin = Math.ceil((MIN_RUN_INTERVAL_MS - (now - lastRunAt)) / 60000);
+            console.log(`⏱️ 파이프라인 스킵 — 직전 실행 후 ${remainingMin}분 남음 (최소 간격 30분)`);
+            return;
+      }
+      lastRunAt = now;
+
+      const startTime = now;
       console.log('\n' + '='.repeat(60));
       console.log('🌅 코인이지 데일리 브리핑 파이프라인 시작');
       console.log('='.repeat(60));
