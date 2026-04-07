@@ -272,5 +272,5 @@ if (runNow) {
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
 
   // 시작 시 1회 테스트 실행 (선택사항 - 주석 해제하면 시작시 바로 실행)
-  // runBriefingPipeline();
+    runBriefingPipeline();
 }
