@@ -136,7 +136,7 @@ async function runBriefingPipeline() {
                                                     console.log(`  📝 나레이션: ${shortsScript.narration?.substring(0, 50)}...`);
 
                                       // 6-2: 영상 생성 (TTS + FFmpeg)
-                                      const videoPath = await createShortsVideo(shortsScript);
+                                      const videoPath = await createShortsVideo(shortsScript, data);
                                                     if (videoPath) {
                                                                       // 6-3: YouTube 업로드 (비공개)
                                                       const uploadResult = await uploadToYouTube(videoPath, {
