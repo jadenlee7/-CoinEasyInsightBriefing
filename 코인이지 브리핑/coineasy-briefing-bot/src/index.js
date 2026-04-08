@@ -34,7 +34,7 @@ const CONFIG = {
       saveBlogDraft: process.env.SAVE_BLOG_DRAFT !== 'false',
       enableXPost: process.env.ENABLE_X_POST !== 'false',
       enableYouTube: process.env.ENABLE_YOUTUBE !== 'false',
-      enableFigmaBanner: process.env.FIGMA_TOKEN ? true : false,
+      enableFigmaBanner: !!process.env.FIGMA_TOKEN && process.env.DISABLE_FIGMA_BANNER !== 'true',
       debug: process.env.DEBUG === 'true',
 };
 
