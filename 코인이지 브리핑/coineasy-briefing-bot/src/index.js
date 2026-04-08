@@ -271,8 +271,14 @@ if (runNow) {
 
   console.log('🤖 코인이지 데일리 브리핑 봇 가동!');
       console.log(`⏰ 스케줄: ${schedules.map(s => `${s.label}(${s.cron} KST)`).join(', ')}`);
-      console.log(`📢 공지방 (브리핑): ${CONFIG.channelId || '미설정'}`);
-      console.log(`💬 개인 DM (블로그 초안): ${CONFIG.chatId || '미설정'}`);
+      console.log(`📢 공지방 (브리핑): ${CONFIG.channelId || '⚠️ 미설정 — TELEGRAM_CHANNEL_ID 환경변수 필요'}`);
+      console.log(`💬 개인 DM (블로그 초안): ${CONFIG.chatId || '⚠️ 미설정 — TELEGRAM_CHAT_ID 환경변수 필요'}`);
+      if (!CONFIG.channelId) {
+        console.warn('⚠️  TELEGRAM_CHANNEL_ID 미설정 → 공지방 발송이 스킵됩니다. Railway Variables 에 추가 후 재배포 필요.');
+      }
+      if (!CONFIG.botToken) {
+        console.warn('⚠️  TELEGRAM_BOT_TOKEN 미설정 → 텔레그램 발송 전체 스킵.');
+      }
       console.log(`📝 블로그 초안: ${CONFIG.saveBlogDraft ? '활성화' : '비활성화'}`);
       console.log(`🐦 X 포스팅: ${CONFIG.enableXPost ? '활성화' : '비활성화'}`);
       console.log(`🎬 YouTube Shorts: ${CONFIG.enableYouTube ? '활성화' : '비활성화'}`);
@@ -286,15 +292,6 @@ if (runNow) {
     }, { timezone: 'Asia/Seoul' });
   }
 
-  // Railway에서 프로세스 유지
+  // Railway에서 프로세스 유지 — 순수 cron 모드 (시작 시 자동 실행 없음)
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
-
-  // 시작 시 자동 실행은 기본 비활성화 (Railway 재시작 루프로 인한 중복 발송 방지).
-  // 환경변수 RUN_ON_START=true 일 때만 시작 시 1회 실행 (테스트/즉시 발송용).
-  // 사용법: Railway 대시보드 → Variables → RUN_ON_START=true 추가 → 재배포 →
-  //         공지방에 1회 발송 확인 후 변수 삭제(또는 false 로 변경).
-  if (process.env.RUN_ON_START === 'true') {
-    console.log('🚀 RUN_ON_START=true → 시작 시 1회 실행');
-    runBriefingPipeline();
-  }
 }
