@@ -74,7 +74,7 @@ async function runBriefingPipeline() {
             let bannerData = null;
               if (CONFIG.enableFigmaBanner) {
                             console.log('\n🎨 Step 3/7: Figma 배너 Export 중...');
-                            bannerData = await exportFigmaBanner();
+                            bannerData = await exportFigmaBanner(data);
                             if (bannerData) {
                                             console.log(`  ✅ 배너 Export 완료 (${(bannerData.size / 1024).toFixed(1)}KB)`);
                             } else {
