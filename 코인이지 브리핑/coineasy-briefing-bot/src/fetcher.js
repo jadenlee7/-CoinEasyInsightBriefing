@@ -22,7 +22,7 @@ async function fetchJSON(url, label = '', headers = {}) {
                   headers: { 'Accept': 'application/json', ...headers },
                   signal: AbortSignal.timeout(15000),
           });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          if (res.status === 429) { console.warn(`[FETCH] ${label} 429 rate limit, 5초 후 재시도...`); await new Promise(r => setTimeout(r, 5000)); const retry = await fetch(url, { headers: { 'Accept': 'application/json', ...headers }, signal: AbortSignal.timeout(15000) }); if (!retry.ok) throw new Error(`HTTP ${retry.status} (재시도)`); return await retry.json(); }
           return await res.json();
     } catch (err) {
           console.error(`[FETCH ERROR] ${label || url}: ${err.message}`);
