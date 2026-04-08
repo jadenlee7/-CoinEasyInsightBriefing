@@ -204,7 +204,7 @@ const TEXT_OVERLAYS = [
               key: 'kimchiRate',
               format: (_, data) => {
                          const rate = data?.kimchi?.krwRate;
-                         return rate ? `환율: ₩${Math.round(rate).toLocaleString('en-US')}/USDT` : '';
+                         return rate ? `환율: ₩${rate}/USDT` : '';
               },
               x: 64, y: 575, w: 350, h: 26,
               bg: '#FFFFFF', font: 'medium 20px', color: '#333333', align: 'left',
