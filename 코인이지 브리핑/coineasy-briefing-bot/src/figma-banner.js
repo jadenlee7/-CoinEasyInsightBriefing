@@ -462,4 +462,3 @@ export async function uploadMediaToX(imageBuffer) {
        }
 }
 
-}
