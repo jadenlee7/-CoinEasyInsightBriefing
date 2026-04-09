@@ -64,6 +64,12 @@ async function runBriefingPipeline() {
           // Step 1: 데이터 수집
         console.log('\n📡 Step 1/7: 데이터 수집 중...');
           const data = await collectAllData();
+
+          // 현재 한국 시간대 라벨 (아침/점심/저녁) — Claude 프롬프트에 전달
+          const kstHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', hour12: false }));
+          data.timeLabel = kstHour < 11 ? '아침' : kstHour < 15 ? '점심' : '저녁';
+          data.timeEmoji = kstHour < 11 ? '🌅' : kstHour < 15 ? '☀️' : '🌙';
+
           if (!data.market && !data.fearGreed && !data.kimchi) {
                     console.error('❌ 핵심 데이터 수집 실패. 파이프라인 중단.');
                     return;

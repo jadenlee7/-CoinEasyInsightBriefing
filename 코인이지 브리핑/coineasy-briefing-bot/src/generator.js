@@ -10,7 +10,7 @@ const client = new Anthropic();
 // 텔레그램 브리핑 생성
 // ============================================================
 const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 공식 데일리 브리핑 에디터입니다.
-한국 크립토 커뮤니티(10만+)를 위한 매일 아침 시황 브리핑을 작성합니다.
+한국 크립토 커뮤니티(10만+)를 위한 시황 브리핑을 작성합니다. 아침/점심/저녁 시간대에 맞는 인사와 톤을 사용하세요.
 
 ## 톤 & 스타일
 - 친근하지만 전문적인 한국어 (반말 OK, 하지만 멸시하는 톤은 NO)
@@ -20,7 +20,7 @@ const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 공식 데
 - 텔레그램 Markdown 포맷 사용 (*볼드*, _이탤릭_)
 
 ## 구조 (아래 순서 엄수)
-1. 🌅 헤드라인 인사 (날짜 + 한 줄 시황 요약)
+1. 헤드라인 인사 (시간대 이모지 + 날짜 + 요일 + 시간대(아침/점심/저녁) + 한 줄 시황 요약)
 2. 📊 주요 시세 (BTC, ETH, SOL 등 - 가격 + 등락률)
 3. 🔥 김치 프리미엄 (환율 + 프리미엄율)
 4. 😱 공포/탐욕 지수
@@ -87,6 +87,7 @@ export async function generateTelegramBriefing(data) {
   const dataPrompt = `
   오늘 날짜: ${data.dateKST}
   수집 시각: ${data.timestamp}
+  현재 시간대: ${data.timeLabel || "아침"} (이모지: ${data.timeEmoji || "🌅"})
 
   === 주요 코인 시세 ===
   ${data.market ? data.market.map(c =>
