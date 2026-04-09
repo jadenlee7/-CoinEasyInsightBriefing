@@ -515,37 +515,73 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
                         console.error('[텔레그램] 필수 파라미터 누락 (botToken/chatId/imageBuffer)');
                         return false;
            }
+
+           // 캡션을 줄바꿈 기준으로 안전하게 자르기 (Markdown 태그 깨짐 방지)
+           function safeTrimCaption(text, maxLen = 1020) {
+                        if (!text || text.length <= maxLen) return text;
+                        const lines = text.split('\n');
+                        let result = '';
+                        for (const line of lines) {
+                                       if ((result + line + '\n').length > maxLen) break;
+                                       result += line + '\n';
+                        }
+                        return result.trim() || text.substring(0, maxLen);
+           }
+
+           function stripMarkdown(text) {
+                        return text.replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/`([^`]+)`/g, '$1');
+           }
+
            try {
                         const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+
+                        // 1차: Markdown 캡션 (안전하게 잘라서)
                         const formData = new FormData();
                         const blob = new Blob([imageBuffer], { type: 'image/png' });
                         formData.append('chat_id', chatId);
                         formData.append('photo', blob, 'coineasy_daily_banner.png');
                         if (caption) {
-                                       const trimmedCaption = caption.length > 1020 ? caption.substring(0, 1020) + '...' : caption;
-                                       formData.append('caption', trimmedCaption);
+                                       formData.append('caption', safeTrimCaption(caption));
                                        formData.append('parse_mode', 'Markdown');
                         }
                         const res = await fetch(url, { method: 'POST', body: formData });
                         const result = await res.json();
-                        if (!result.ok) {
-                                       console.warn('[텔레그램] Markdown 캡션 실패, 일반 텍스트로 재시도');
-                                       const formData2 = new FormData();
-                                       const blob2 = new Blob([imageBuffer], { type: 'image/png' });
-                                       formData2.append('chat_id', chatId);
-                                       formData2.append('photo', blob2, 'coineasy_daily_banner.png');
-                                       if (caption) {
-                                                        formData2.append('caption', caption.replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1'));
-                                       }
-                                       const res2 = await fetch(url, { method: 'POST', body: formData2 });
-                                       const result2 = await res2.json();
-                                       if (!result2.ok) {
-                                                        console.error(`[텔레그램] 사진 발송 실패: ${result2.description}`);
-                                                        return false;
-                                       }
+                        if (result.ok) {
+                                       console.log(`[텔레그램] 📸 배너 이미지 발송 완료 → ${chatId}`);
+                                       return true;
                         }
-                        console.log(`[텔레그램] 📸 배너 이미지 발송 완료 → ${chatId}`);
-                        return true;
+
+                        // 2차: Markdown 제거 + 안전하게 자르기
+                        console.warn(`[텔레그램] Markdown 캡션 실패 (${result.description}), 일반 텍스트로 재시도`);
+                        const formData2 = new FormData();
+                        const blob2 = new Blob([imageBuffer], { type: 'image/png' });
+                        formData2.append('chat_id', chatId);
+                        formData2.append('photo', blob2, 'coineasy_daily_banner.png');
+                        if (caption) {
+                                       formData2.append('caption', safeTrimCaption(stripMarkdown(caption)));
+                        }
+                        const res2 = await fetch(url, { method: 'POST', body: formData2 });
+                        const result2 = await res2.json();
+                        if (result2.ok) {
+                                       console.log(`[텔레그램] 📸 배너 이미지 발송 완료 (plain text) → ${chatId}`);
+                                       return true;
+                        }
+
+                        // 3차: 캡션 없이 사진만 발송
+                        console.warn(`[텔레그램] 캡션 재시도 실패 (${result2.description}), 사진만 발송`);
+                        const formData3 = new FormData();
+                        const blob3 = new Blob([imageBuffer], { type: 'image/png' });
+                        formData3.append('chat_id', chatId);
+                        formData3.append('photo', blob3, 'coineasy_daily_banner.png');
+                        const res3 = await fetch(url, { method: 'POST', body: formData3 });
+                        const result3 = await res3.json();
+                        if (result3.ok) {
+                                       console.log(`[텔레그램] 📸 배너 이미지만 발송 완료 (캡션 없음) → ${chatId}`);
+                                       return true;
+                        }
+
+                        console.error(`[텔레그램] 사진 발송 최종 실패: ${result3.description}`);
+                        return false;
            } catch (err) {
                         console.error(`[텔레그램 사진 에러] ${err.message}`);
                         return false;
