@@ -27,7 +27,6 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 
 // ============================================================
-import { runDailyFigma } from './figma-daily/runDailyFigma.js';
 
 // 환경변수 로드
 // ============================================================
@@ -39,7 +38,7 @@ const CONFIG = {
             saveBlogDraft:      process.env.SAVE_BLOG_DRAFT !== 'false',
             enableXPost:        process.env.ENABLE_X_POST !== 'false',
             enableYouTube:      process.env.ENABLE_YOUTUBE !== 'false',
-            enableFigmaBanner:  process.env.FIGMA_TOKEN ? true : false,
+            enableFigmaBanner:  true,  // canvas fallback when Figma API unavailable
             debug:              process.env.DEBUG === 'true',
 };
 
@@ -288,15 +287,6 @@ if (runNow) {
             console.log(`🎬 YouTube Shorts: ${CONFIG.enableYouTube ? '활성화' : '비활성화'}`);
             console.log(`🎨 Figma 배너: ${CONFIG.enableFigmaBanner ? '활성화' : '비활성화'}`);
             console.log('');
-
-  // Figma 데일리 카드 - 아침 브리핑 5분 전에 미리보기 전송
-  const figmaUtcHour = (8 - 9 + 24) % 24;
-            const figmaCron = `55 ${figmaUtcHour === 0 ? 23 : figmaUtcHour - 1} * * *`;
-            console.log(`🖼️ Figma 카드: 매일 7:55 KST (cron: ${figmaCron} UTC)`);
-            cron.schedule(figmaCron, () => {
-                          console.log(`\n🖼️ Figma 데일리 트리거 (${new Date().toISOString()})`);
-                          runDailyFigma();
-            });
 
   console.log('💤 다음 실행 대기 중... (Ctrl+C로 종료)\n');
 

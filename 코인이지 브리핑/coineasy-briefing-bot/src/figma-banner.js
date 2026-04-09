@@ -21,6 +21,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { createCanvas, loadImage, registerFont } from 'canvas';
+import { renderCanvasBanner, getTimeLabel } from './canvas-banner.js';
 
 // ============================================================
 // 설정
@@ -122,7 +123,7 @@ const TEXT_OVERLAYS = [
                                      const m = seoulDate.getMonth() + 1;
                                      const d = seoulDate.getDate();
                                      const weekday = days[seoulDate.getDay()];
-                                     return `${m}월 ${d}일 ${weekday}요일 아침`;
+                                     return `${m}월 ${d}일 ${weekday}요일 ${getTimeLabel()}`;
                       },
                       x: 449, y: 135, w: 183, h: 26, bg: '#3F2912',
                       font: 'bold 22px', color: '#FFFFFF', align: 'center',
@@ -449,7 +450,23 @@ function overlayTexts(canvas, ctx, data, scale) {
 // ============================================================
 export async function exportFigmaBanner(data) {
            const pngBuffer = await fetchFigmaPNG();
-           if (!pngBuffer) return null;
+           if (!pngBuffer) {
+                        // Figma API 실패 → canvas fallback 배너 생성
+                        console.log('  🔄 Figma API 실패 — canvas fallback 배너 생성 중...');
+                        try {
+                                       const fallbackBuffer = await renderCanvasBanner(data);
+                                       console.log(`  ✅ Canvas fallback 배너 생성 완료 (${(fallbackBuffer.length / 1024).toFixed(1)}KB)`);
+                                       const bannersDir = './banners';
+                                       if (!existsSync(bannersDir)) await mkdir(bannersDir, { recursive: true });
+                                       const dateStr = new Date().toISOString().split('T')[0];
+                                       const filename = `${bannersDir}/banner_${dateStr}_fallback.png`;
+                                       await writeFile(filename, fallbackBuffer);
+                                       return { buffer: fallbackBuffer, filename, size: fallbackBuffer.length };
+                        } catch (fbErr) {
+                                       console.error(`  ❌ Canvas fallback 에러: ${fbErr.message}`);
+                                       return null;
+                        }
+           }
 
   try {
                const img = await loadImage(pngBuffer);
