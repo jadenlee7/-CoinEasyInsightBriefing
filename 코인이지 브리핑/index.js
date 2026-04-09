@@ -14,7 +14,7 @@ import cron from 'node-cron';
 import { collectAllData } from './fetcher.js';
 import { generateTelegramBriefing, generateBlogDraft } from './generator.js';
 import { sendTelegramMessage, broadcastBriefing } from './telegram.js';
-import { publishFigmaContent } from './figma-content.js';
+// import { publishFigmaContent } from './figma-content.js';  // DISABLED — Easy Ed 카드 게시 중단
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 
@@ -111,26 +111,8 @@ async function runBriefingPipeline() {
                             console.log('\n⏭️  Step 4/5: 블로그 초안 스킵 (비활성화)');
             }
 
-            // Step 5: Figma 콘텐츠 카드 게시 (텔레그램 + 인스타그램)
-            if (process.env.FIGMA_TOKEN) {
-                            console.log('\n🖼️  Step 5/5: Figma 콘텐츠 카드 게시...');
-                            try {
-                                                // Fear & Greed 지수가 있으면 해당 카드 자동 게시
-                                if (data.fearGreed) {
-                                                        const fgValue = data.fearGreed.value || '';
-                                                        const fgClass = data.fearGreed.classification || '';
-                                                        const fgCaption = `📊 Fear & Greed Index: ${fgValue}\n상태: ${fgClass}\n\n#코인이지 #FearAndGreed`;
-                                                        await publishFigmaContent('fear-greed', fgCaption);
-                                }
-
-                                // 비트코인 공급 분석 카드도 함께 게시
-                                // await publishFigmaContent('btc-supply-crunch');
-                            } catch (figmaErr) {
-                                                console.error(`  ⚠️ Figma 콘텐츠 게시 오류: ${figmaErr.message}`);
-                            }
-            } else {
-                            console.log('\n⏭️  Step 5/5: Figma 콘텐츠 스킵 (FIGMA_TOKEN 미설정)');
-            }
+            // Step 5: Figma 콘텐츠 카드 게시 — DISABLED (Easy Ed 카드 게시 중단)
+            console.log('\n⏭️  Step 5/5: Figma 콘텐츠 스킵 (비활성화)');
 
             // 완료
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
