@@ -247,7 +247,9 @@ ${telegramBriefing}
       ],
     });
 
-    const text = response.content[0]?.text || '';
+    let text = response.content[0]?.text || '';
+    // 해시태그 강제 제거 (#으로 시작하는 단어 모두 제거)
+    text = text.replace(/#[\w가-힣]+/g, '').replace(/\n{2,}/g, '\n').trim();
     const trimmed = text.length > 280 ? text.substring(0, 277) + '...' : text;
     console.log(`[X 포스트] 완료 (${trimmed.length}자)`);
     return trimmed;
