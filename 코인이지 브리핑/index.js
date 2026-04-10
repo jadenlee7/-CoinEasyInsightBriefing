@@ -35,6 +35,35 @@ const CONFIG = {
 // ============================================================
 // 메인 브리핑 파이프라인
 // ============================================================
+// 하이퍼링크 푸터 (공지방, 채팅방, X, 출처)
+// ============================================================
+function buildFooter(data) {
+  const lines = [];
+
+  // 출처 링크
+  const sources = [];
+  if (data.market) sources.push('<a href="https://www.coingecko.com">CoinGecko</a>');
+  if (data.fearGreed) sources.push('<a href="https://alternative.me/crypto/fear-and-greed-index/">Alternative.me</a>');
+  if (data.defi) sources.push('<a href="https://defillama.com">DefiLlama</a>');
+  if (sources.length > 0) {
+    lines.push(`\n<b>출처</b>\n${sources.join(' · ')}`);
+  }
+
+  // 공지방 · 채팅방 · X
+  lines.push(`\n📢 <a href="https://t.me/coiniseasy">공지방</a> · 💬 <a href="https://t.me/coineasy_official">채팅방</a> · ✖ <a href="https://x.com/Coiniseasy">X</a>`);
+
+  return lines.join('\n');
+}
+
+// Markdown → HTML 변환 (AI 브리핑이 Markdown으로 올 경우 대비)
+function markdownToHtml(text) {
+  return text
+    .replace(/\*([^*]+)\*/g, '<b>$1</b>')
+    .replace(/_([^_]+)_/g, '<i>$1</i>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+// ============================================================
 async function runBriefingPipeline() {
         const startTime = Date.now();
         console.log('\n' + '='.repeat(60));
@@ -60,9 +89,13 @@ async function runBriefingPipeline() {
                             return;
             }
 
+            // 브리핑 텍스트를 HTML로 변환 + 푸터 추가
+            const htmlBriefing = markdownToHtml(telegramBriefing) + buildFooter(data);
+
+
             if (CONFIG.debug) {
                             console.log('\n--- 텔레그램 브리핑 미리보기 ---');
-                            console.log(telegramBriefing);
+                            console.log(htmlBriefing);
                             console.log('--- 미리보기 끝 ---\n');
             }
 
@@ -70,7 +103,7 @@ async function runBriefingPipeline() {
             console.log('\n📤 Step 3/5: 텔레그램 발송 중 (개인톡)...');
                 if (CONFIG.chatId && CONFIG.botToken) {
                                 const success = await sendTelegramMessage(
-                                                    telegramBriefing,
+                                                    htmlBriefing,
                                                     CONFIG.chatId,
                                                     CONFIG.botToken
                                                 );

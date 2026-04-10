@@ -23,7 +23,7 @@ export async function sendTelegramMessage(text, chatId, botToken) {
         body: JSON.stringify({
           chat_id: chatId,
           text: messages[i],
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           disable_web_page_preview: true,
         }),
       });
@@ -31,8 +31,7 @@ export async function sendTelegramMessage(text, chatId, botToken) {
       const result = await res.json();
 
       if (!result.ok) {
-        // Markdown 파싱 실패시 HTML로 재시도
-        console.warn(`[텔레그램] Markdown 실패, HTML로 재시도: ${result.description}`);
+                      // HTML 파싱 실패시 일반 텍스트로 재시도
         const htmlRes = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
