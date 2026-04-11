@@ -507,12 +507,12 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
                         if (caption) {
                                        const trimmedCaption = caption.length > 1020 ? caption.substring(0, 1020) + '...' : caption;
                                        formData.append('caption', trimmedCaption);
-                                       formData.append('parse_mode', 'Markdown');
+                                       formData.append('parse_mode', 'HTML');
                         }
                         const res = await fetch(url, { method: 'POST', body: formData });
                         const result = await res.json();
                         if (!result.ok) {
-                                       console.warn('[텔레그램] Markdown 캡션 실패, 일반 텍스트로 재시도');
+                                       console.warn('[텔레그램] HTML 캡션 실패, 일반 텍스트로 재시도');
                                        const formData2 = new FormData();
                                        const blob2 = new Blob([imageBuffer], { type: 'image/png' });
                                        formData2.append('chat_id', chatId);
