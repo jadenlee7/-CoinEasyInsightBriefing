@@ -106,6 +106,10 @@ async function runBriefingPipeline(isFirstRun = false) {
           const telegramBriefing = await generateTelegramBriefing(data);
           if (!telegramBriefing) { console.error('❌ 브리핑 생성 실패.'); return; }
 
+        // 텔레그램 푸터 (공지방, 채팅방, X)
+        const briefingWithFooter = telegramBriefing + '\n\n📢 공지방: https://t.me/coiniseasy · 💬 채팅방: https://t.me/coineasy_official · ✖ X: https://x.com/Coiniseasy';
+
+
       let bannerData = null;
           if (CONFIG.enableFigmaBanner) {
                   console.log('\n🎨 Step 3/7: Figma 배너 Export 중...');
@@ -118,22 +122,22 @@ async function runBriefingPipeline(isFirstRun = false) {
           if (CONFIG.channelId && CONFIG.botToken) {
                   console.log(`  📢 공지 채널 발송: ${CONFIG.channelId}`);
                   if (bannerData && bannerData.buffer) {
-                            const channelPhotoOk = await sendTelegramPhoto(bannerData.buffer, telegramBriefing, CONFIG.channelId, CONFIG.botToken);
+                            const channelPhotoOk = await sendTelegramPhoto(bannerData.buffer, briefingWithFooter, CONFIG.channelId, CONFIG.botToken);
                             console.log(`  ${channelPhotoOk ? '✅' : '❌'} 채널 배너+브리핑: ${CONFIG.channelId}`);
-                            if (telegramBriefing.length > 1020) { await sendTelegramMessage(telegramBriefing, CONFIG.channelId, CONFIG.botToken); }
+                            if (briefingWithFooter.length > 1020) { await sendTelegramMessage(briefingWithFooter, CONFIG.channelId, CONFIG.botToken); }
                   } else {
-                            const chOk = await sendTelegramMessage(telegramBriefing, CONFIG.channelId, CONFIG.botToken);
+                            const chOk = await sendTelegramMessage(briefingWithFooter, CONFIG.channelId, CONFIG.botToken);
                             console.log(`  ${chOk ? '✅' : '❌'} 채널 텍스트 발송: ${CONFIG.channelId}`);
                   }
           }
           if (CONFIG.chatId && CONFIG.botToken) {
                   console.log(`  💬 개인톡 발송: ${CONFIG.chatId}`);
                   if (bannerData && bannerData.buffer) {
-                            const photoSuccess = await sendTelegramPhoto(bannerData.buffer, telegramBriefing, CONFIG.chatId, CONFIG.botToken);
+                            const photoSuccess = await sendTelegramPhoto(bannerData.buffer, briefingWithFooter, CONFIG.chatId, CONFIG.botToken);
                             console.log(`  ${photoSuccess ? '✅' : '❌'} 개인톡 배너+브리핑: ${CONFIG.chatId}`);
-                            if (telegramBriefing.length > 1020) { await sendTelegramMessage(telegramBriefing, CONFIG.chatId, CONFIG.botToken); }
+                            if (briefingWithFooter.length > 1020) { await sendTelegramMessage(briefingWithFooter, CONFIG.chatId, CONFIG.botToken); }
                   } else {
-                            const success = await sendTelegramMessage(telegramBriefing, CONFIG.chatId, CONFIG.botToken);
+                            const success = await sendTelegramMessage(briefingWithFooter, CONFIG.chatId, CONFIG.botToken);
                             console.log(`  ${success ? '✅' : '❌'} 개인톡 텍스트 발송: ${CONFIG.chatId}`);
                   }
           }
