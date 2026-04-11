@@ -107,7 +107,7 @@ async function runBriefingPipeline(isFirstRun = false) {
           if (!telegramBriefing) { console.error('❌ 브리핑 생성 실패.'); return; }
 
         // 텔레그램 푸터 (공지방, 채팅방, X)
-        const briefingWithFooter = telegramBriefing + '\n\n📢 공지방: https://t.me/coiniseasy · 💬 채팅방: https://t.me/coineasy_official · ✖ X: https://x.com/Coiniseasy';
+        const briefingWithFooter = telegramBriefing + '\n\n📢 <a href="https://t.me/coiniseasy">공지방</a> · 💬 <a href="https://t.me/coineasy_official">채팅방</a> · ✖️ <a href="https://x.com/Coiniseasy">X</a>\n\n#EasyEd #이지에드 #이지브리프 #CoinEasy';
 
 
       let bannerData = null;
