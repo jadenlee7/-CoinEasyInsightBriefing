@@ -20,7 +20,7 @@ import { runDailyFigma } from './figma-daily/runDailyFigma.js';
 
 // Typefully API v2
 const TYPEFULLY_API_KEY = process.env.TYPEFULLY_API_KEY || '';
-const TYPEFULLY_SOCIAL_SET_ID = '235804';
+const TYPEFULLY_SOCIAL_SET_ID = '235004';
 const TYPEFULLY_API_BASE = 'https://api.typefully.com';
 
 const CONFIG = {
