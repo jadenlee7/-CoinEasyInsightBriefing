@@ -173,6 +173,11 @@ function renderFrame(payload, t) {
   // ── Footer ──
   fillText(ctx, 'CoinEasy • 매일 아침 8시', W / 2, H - 60, CFG.COLORS.gray, 'Regular', 30, 'center');
 
+         // — CTA (Telegram subscription) —
+      roundRect(ctx, 40, H - 220, W - 80, 100, 16, CFG.COLORS.orange);
+      fillText(ctx, '📢 텔레그램에서 실시간 브리핑 받기', W / 2, H - 180, CFG.COLORS.white, 'Bold', 36, 'center');
+      fillText(ctx, '@coiniseasy 구독하기', W / 2, H - 140, CFG.COLORS.yellow, 'Bold', 32, 'center');
+
   ctx.globalAlpha = 1;
   return canvas;
 }
@@ -195,6 +200,7 @@ async function generateTTS(payload, outDir) {
     `김치 프리미엄은 ${t.kimchi_premium}.`,
     `오늘의 인사이트: ${t.quote_line1}. ${t.quote_line2}.`,
     `코인이지와 함께 오늘도 현명한 투자 하세요.`,
+          `코인이지 텔레그램 채널에서 매일 아침 실시간 브리핑을 받아보세요. @coiniseasy를 검색하고 구독해주세요.`,
   ].join(' ');
 
   const audioPath = path.join(outDir, 'narration.mp3');
