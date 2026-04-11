@@ -114,20 +114,3 @@ console.log('║  Job 1 (Figma/Telegram) : 매일 UTC 23:00 (KST 08:00)   ║');
 console.log('║  Job 2 (YouTube Shorts) : 매일 UTC 23:05 (KST 08:05)   ║');
 console.log('╚══════════════════════════════════════════════════════════╝');
 console.log('');
-
-// ─── ONE-TIME TEST: run YouTube Shorts immediately on deploy ────
-// TODO: Remove this block after testing
-(async () => {
-    console.log('\n🧪 [TEST] YouTube Shorts 즉시 테스트 실행...\n');
-    try {
-          const result = await runYouTubeShorts();
-          if (result.success) {
-                  console.log(`\n🧪 [TEST] ✅ 성공! URL: ${result.videoUrl} (${result.elapsedMs}ms)\n`);
-          } else {
-                  console.error(`\n🧪 [TEST] ❌ 실패: ${result.error}\n`);
-          }
-    } catch (e) {
-          console.error(`\n🧪 [TEST] 💥 예외: ${e.message}\n`);
-          console.error(e.stack);
-    }
-})();
