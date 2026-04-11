@@ -78,7 +78,8 @@ const TEXT_OVERLAYS = [
                       key: 'btcPrice',
                       format: (_, data) => {
                                      const btc = findCoin(data, 'BTC');
-                                     return btc ? `$${Math.round(btc.price).toLocaleString('en-US')}` : '$--';
+                                     if (!btc || btc.price == null || isNaN(btc.price)) return '$--';
+                                     return `$${Math.round(btc.price).toLocaleString('en-US')}`;
                       },
                       x: 70, y: 240, w: 225, h: 67, bg: '#1C3A2A',
                       font: 'black 56px', color: '#FFFFFF', align: 'left',
@@ -137,7 +138,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'ethChange',
-                      format: (_, data) => { const eth = findCoin(data, 'ETH'); if (!eth) return ''; return fmtChange(eth.change24h); },
+                      format: (_, data) => { const eth = findCoin(data, 'ETH'); return eth ? fmtChange(eth.change24h) : '--'; },
                       x: 70, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -150,7 +151,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'solChange',
-                      format: (_, data) => { const sol = findCoin(data, 'SOL'); if (!sol) return ''; return fmtChange(sol.change24h); },
+                      format: (_, data) => { const sol = findCoin(data, 'SOL'); return sol ? fmtChange(sol.change24h) : '--'; },
                       x: 318, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -163,7 +164,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'suiChange',
-                      format: (_, data) => { const sui = findCoin(data, 'SUI'); if (!sui) return ''; return fmtChange(sui.change24h); },
+                      format: (_, data) => { const sui = findCoin(data, 'SUI'); return sui ? fmtChange(sui.change24h) : '--'; },
                       x: 566, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -176,7 +177,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'xrpChange',
-                      format: (_, data) => { const xrp = findCoin(data, 'XRP'); if (!xrp) return ''; return fmtChange(xrp.change24h); },
+                      format: (_, data) => { const xrp = findCoin(data, 'XRP'); return xrp ? fmtChange(xrp.change24h) : '--'; },
                       x: 814, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -449,6 +450,25 @@ function overlayTexts(canvas, ctx, data, scale) {
 // 메인 Export 함수
 // ============================================================
 export async function exportFigmaBanner(data) {
+           // data.market이 비어있으면 Figma 오버레이가 stale한 템플릿 값을 남기므로 canvas fallback 사용
+           const hasMarketData = data?.market && Array.isArray(data.market) && data.market.length > 0;
+           if (!hasMarketData) {
+                        console.log('  ⚠️ data.market 비어있음 — canvas fallback 사용 (일관된 placeholder 렌더링)');
+                        try {
+                                       const fallbackBuffer = await renderCanvasBanner(data);
+                                       console.log(`  ✅ Canvas fallback 배너 생성 완료 (${(fallbackBuffer.length / 1024).toFixed(1)}KB)`);
+                                       const bannersDir = './banners';
+                                       if (!existsSync(bannersDir)) await mkdir(bannersDir, { recursive: true });
+                                       const dateStr = new Date().toISOString().split('T')[0];
+                                       const filename = `${bannersDir}/banner_${dateStr}_fallback.png`;
+                                       await writeFile(filename, fallbackBuffer);
+                                       return { buffer: fallbackBuffer, filename, size: fallbackBuffer.length };
+                        } catch (fbErr) {
+                                       console.error(`  ❌ Canvas fallback 에러: ${fbErr.message}`);
+                                       return null;
+                        }
+           }
+
            const pngBuffer = await fetchFigmaPNG();
            if (!pngBuffer) {
                         // Figma API 실패 → canvas fallback 배너 생성
