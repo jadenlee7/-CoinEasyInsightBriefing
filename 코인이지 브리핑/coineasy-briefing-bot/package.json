@@ -1,0 +1,22 @@
+{
+  "name": "coineasy-briefing-bot",
+  "version": "1.0.0",
+  "description": "CoinEasy daily market briefing bot — Telegram, X, Figma, YouTube Shorts",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test:figma": "node src/figma-daily/runDailyFigma.js",
+    "test:shorts": "node src/youtube-shorts-generator.js",
+    "test:upload": "node src/youtube-uploader.js"
+  },
+  "dependencies": {
+    "canvas": "^2.11.2",
+    "fluent-ffmpeg": "^2.1.2",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^118.0.0",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
