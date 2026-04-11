@@ -161,8 +161,13 @@ ${data.trending ? data.trending.map(c =>
     });
 
     const text = response.content[0]?.text || '';
-    console.log(`[브리핑 생성] 텔레그램 완료 (${text.length}자)`);
-    return text;
+    // 푸터: 공지방/소통방/X 링크 + 해시태그
+    const footer = '\n\n' +
+      '📢 [공지방](https://t.me/coiniseasy) | 💬 [소통방](https://t.me/coineasy_official) | 🐦 [X](https://x.com/Coiniseasy)\n\n' +
+      '#이지에드 #EasyEd #CoinEasy';
+    const withFooter = text + footer;
+    console.log(`[브리핑 생성] 텔레그램 완료 (${withFooter.length}자)`);
+    return withFooter;
   } catch (err) {
     console.error(`[브리핑 생성 에러] ${err.message}`);
     return null;
