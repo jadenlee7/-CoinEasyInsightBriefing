@@ -21,6 +21,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { createCanvas, loadImage, registerFont } from 'canvas';
+import { renderCanvasBanner, getTimeLabel } from './canvas-banner.js';
 
 // ============================================================
 // 설정
@@ -77,7 +78,8 @@ const TEXT_OVERLAYS = [
                       key: 'btcPrice',
                       format: (_, data) => {
                                      const btc = findCoin(data, 'BTC');
-                                     return btc ? `$${Math.round(btc.price).toLocaleString('en-US')}` : '$--';
+                                     if (!btc || btc.price == null || isNaN(btc.price)) return '$--';
+                                     return `$${Math.round(btc.price).toLocaleString('en-US')}`;
                       },
                       x: 70, y: 240, w: 225, h: 67, bg: '#1C3A2A',
                       font: 'black 56px', color: '#FFFFFF', align: 'left',
@@ -122,7 +124,7 @@ const TEXT_OVERLAYS = [
                                      const m = seoulDate.getMonth() + 1;
                                      const d = seoulDate.getDate();
                                      const weekday = days[seoulDate.getDay()];
-                                     return `${m}월 ${d}일 ${weekday}요일 아침`;
+                                     return `${m}월 ${d}일 ${weekday}요일 ${getTimeLabel()}`;
                       },
                       x: 449, y: 135, w: 183, h: 26, bg: '#3F2912',
                       font: 'bold 22px', color: '#FFFFFF', align: 'center',
@@ -136,7 +138,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'ethChange',
-                      format: (_, data) => { const eth = findCoin(data, 'ETH'); if (!eth) return ''; return fmtChange(eth.change24h); },
+                      format: (_, data) => { const eth = findCoin(data, 'ETH'); return eth ? fmtChange(eth.change24h) : '--'; },
                       x: 70, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -149,7 +151,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'solChange',
-                      format: (_, data) => { const sol = findCoin(data, 'SOL'); if (!sol) return ''; return fmtChange(sol.change24h); },
+                      format: (_, data) => { const sol = findCoin(data, 'SOL'); return sol ? fmtChange(sol.change24h) : '--'; },
                       x: 318, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -162,7 +164,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'suiChange',
-                      format: (_, data) => { const sui = findCoin(data, 'SUI'); if (!sui) return ''; return fmtChange(sui.change24h); },
+                      format: (_, data) => { const sui = findCoin(data, 'SUI'); return sui ? fmtChange(sui.change24h) : '--'; },
                       x: 566, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -175,7 +177,7 @@ const TEXT_OVERLAYS = [
          },
          {
                       key: 'xrpChange',
-                      format: (_, data) => { const xrp = findCoin(data, 'XRP'); if (!xrp) return ''; return fmtChange(xrp.change24h); },
+                      format: (_, data) => { const xrp = findCoin(data, 'XRP'); return xrp ? fmtChange(xrp.change24h) : '--'; },
                       x: 814, y: 438, w: 160, h: 24, bg: '#FFFFFF',
                       font: 'bold 20px', color: '#22C55E', align: 'left',
          },
@@ -448,8 +450,43 @@ function overlayTexts(canvas, ctx, data, scale) {
 // 메인 Export 함수
 // ============================================================
 export async function exportFigmaBanner(data) {
+           // data.market이 비어있으면 Figma 오버레이가 stale한 템플릿 값을 남기므로 canvas fallback 사용
+           const hasMarketData = data?.market && Array.isArray(data.market) && data.market.length > 0;
+           if (!hasMarketData) {
+                        console.log('  ⚠️ data.market 비어있음 — canvas fallback 사용 (일관된 placeholder 렌더링)');
+                        try {
+                                       const fallbackBuffer = await renderCanvasBanner(data);
+                                       console.log(`  ✅ Canvas fallback 배너 생성 완료 (${(fallbackBuffer.length / 1024).toFixed(1)}KB)`);
+                                       const bannersDir = './banners';
+                                       if (!existsSync(bannersDir)) await mkdir(bannersDir, { recursive: true });
+                                       const dateStr = new Date().toISOString().split('T')[0];
+                                       const filename = `${bannersDir}/banner_${dateStr}_fallback.png`;
+                                       await writeFile(filename, fallbackBuffer);
+                                       return { buffer: fallbackBuffer, filename, size: fallbackBuffer.length };
+                        } catch (fbErr) {
+                                       console.error(`  ❌ Canvas fallback 에러: ${fbErr.message}`);
+                                       return null;
+                        }
+           }
+
            const pngBuffer = await fetchFigmaPNG();
-           if (!pngBuffer) return null;
+           if (!pngBuffer) {
+                        // Figma API 실패 → canvas fallback 배너 생성
+                        console.log('  🔄 Figma API 실패 — canvas fallback 배너 생성 중...');
+                        try {
+                                       const fallbackBuffer = await renderCanvasBanner(data);
+                                       console.log(`  ✅ Canvas fallback 배너 생성 완료 (${(fallbackBuffer.length / 1024).toFixed(1)}KB)`);
+                                       const bannersDir = './banners';
+                                       if (!existsSync(bannersDir)) await mkdir(bannersDir, { recursive: true });
+                                       const dateStr = new Date().toISOString().split('T')[0];
+                                       const filename = `${bannersDir}/banner_${dateStr}_fallback.png`;
+                                       await writeFile(filename, fallbackBuffer);
+                                       return { buffer: fallbackBuffer, filename, size: fallbackBuffer.length };
+                        } catch (fbErr) {
+                                       console.error(`  ❌ Canvas fallback 에러: ${fbErr.message}`);
+                                       return null;
+                        }
+           }
 
   try {
                const img = await loadImage(pngBuffer);
@@ -498,37 +535,73 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
                         console.error('[텔레그램] 필수 파라미터 누락 (botToken/chatId/imageBuffer)');
                         return false;
            }
+
+           // 캡션을 줄바꿈 기준으로 안전하게 자르기 (Markdown 태그 깨짐 방지)
+           function safeTrimCaption(text, maxLen = 1020) {
+                        if (!text || text.length <= maxLen) return text;
+                        const lines = text.split('\n');
+                        let result = '';
+                        for (const line of lines) {
+                                       if ((result + line + '\n').length > maxLen) break;
+                                       result += line + '\n';
+                        }
+                        return result.trim() || text.substring(0, maxLen);
+           }
+
+           function stripMarkdown(text) {
+                        return text.replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/`([^`]+)`/g, '$1');
+           }
+
            try {
                         const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+
+                        // 1차: Markdown 캡션 (안전하게 잘라서)
                         const formData = new FormData();
                         const blob = new Blob([imageBuffer], { type: 'image/png' });
                         formData.append('chat_id', chatId);
                         formData.append('photo', blob, 'coineasy_daily_banner.png');
                         if (caption) {
-                                       const trimmedCaption = caption.length > 1020 ? caption.substring(0, 1020) + '...' : caption;
-                                       formData.append('caption', trimmedCaption);
-                                       formData.append('parse_mode', 'HTML');
+                                       formData.append('caption', safeTrimCaption(caption));
+                                       formData.append('parse_mode', 'Markdown');
                         }
                         const res = await fetch(url, { method: 'POST', body: formData });
                         const result = await res.json();
-                        if (!result.ok) {
-                                       console.warn('[텔레그램] HTML 캡션 실패, 일반 텍스트로 재시도');
-                                       const formData2 = new FormData();
-                                       const blob2 = new Blob([imageBuffer], { type: 'image/png' });
-                                       formData2.append('chat_id', chatId);
-                                       formData2.append('photo', blob2, 'coineasy_daily_banner.png');
-                                       if (caption) {
-                                                        formData2.append('caption', caption.replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1'));
-                                       }
-                                       const res2 = await fetch(url, { method: 'POST', body: formData2 });
-                                       const result2 = await res2.json();
-                                       if (!result2.ok) {
-                                                        console.error(`[텔레그램] 사진 발송 실패: ${result2.description}`);
-                                                        return false;
-                                       }
+                        if (result.ok) {
+                                       console.log(`[텔레그램] 📸 배너 이미지 발송 완료 → ${chatId}`);
+                                       return true;
                         }
-                        console.log(`[텔레그램] 📸 배너 이미지 발송 완료 → ${chatId}`);
-                        return true;
+
+                        // 2차: Markdown 제거 + 안전하게 자르기
+                        console.warn(`[텔레그램] Markdown 캡션 실패 (${result.description}), 일반 텍스트로 재시도`);
+                        const formData2 = new FormData();
+                        const blob2 = new Blob([imageBuffer], { type: 'image/png' });
+                        formData2.append('chat_id', chatId);
+                        formData2.append('photo', blob2, 'coineasy_daily_banner.png');
+                        if (caption) {
+                                       formData2.append('caption', safeTrimCaption(stripMarkdown(caption)));
+                        }
+                        const res2 = await fetch(url, { method: 'POST', body: formData2 });
+                        const result2 = await res2.json();
+                        if (result2.ok) {
+                                       console.log(`[텔레그램] 📸 배너 이미지 발송 완료 (plain text) → ${chatId}`);
+                                       return true;
+                        }
+
+                        // 3차: 캡션 없이 사진만 발송
+                        console.warn(`[텔레그램] 캡션 재시도 실패 (${result2.description}), 사진만 발송`);
+                        const formData3 = new FormData();
+                        const blob3 = new Blob([imageBuffer], { type: 'image/png' });
+                        formData3.append('chat_id', chatId);
+                        formData3.append('photo', blob3, 'coineasy_daily_banner.png');
+                        const res3 = await fetch(url, { method: 'POST', body: formData3 });
+                        const result3 = await res3.json();
+                        if (result3.ok) {
+                                       console.log(`[텔레그램] 📸 배너 이미지만 발송 완료 (캡션 없음) → ${chatId}`);
+                                       return true;
+                        }
+
+                        console.error(`[텔레그램] 사진 발송 최종 실패: ${result3.description}`);
+                        return false;
            } catch (err) {
                         console.error(`[텔레그램 사진 에러] ${err.message}`);
                         return false;
