@@ -266,8 +266,8 @@ function fmtPct(v) {
         return `${sign}${v.toFixed(2)}%`;
 }
 
-function fmtDateKr(d) {
-        return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAY_KO[d.getDay()]}요일 아침`;
+function fmtDateKr(d, session = null) {
+        return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAY_KO[d.getDay()]}요일 ${session ? session.label : '아침'}`;
 }
 
 function fmtTvl(v) {
@@ -296,7 +296,7 @@ function fearNote(fg, marketChange) {
 
 // ─── Main payload builder ─────────────────────────────────
 
-async function buildPayload(now = new Date()) {
+async function buildPayload(now = new Date(), session = null) {
         // Fetch sequentially to avoid CoinGecko rate limits
     // (free tier: ~10-30 req/min)
     const fearGreed = await fetchFearGreed();
@@ -333,7 +333,7 @@ async function buildPayload(now = new Date()) {
     const quote = await generateQuote(summary);
 
     const texts = {
-                date_label: fmtDateKr(now),
+                date_label: fmtDateKr(now, session),
                 btc_price: fmtPrice(prices.BTC.price),
                 btc_change: fmtPct(prices.BTC.change_24h),
                 market_change: `MARKET ${fmtPct(avgChange)}`,
@@ -392,7 +392,7 @@ async function buildPayload(now = new Date()) {
         }
 
     return {
-                frame_id: '28334:14',
+                frame_id: '28334:14', session: session || { type: 'morning', label: '아침', footer: '매일 아침 8시', cta: '오늘 하루도 현명한 투자 하세요' },
                 generated_at: now.toISOString(),
                 texts,
                 gauge: { fill_pct: fearGreed.value / 100 },
