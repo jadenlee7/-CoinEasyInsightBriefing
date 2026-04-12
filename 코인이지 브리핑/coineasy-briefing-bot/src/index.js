@@ -114,3 +114,19 @@ console.log('║  Job 1 (Figma/Telegram) : 매일 UTC 23:00 (KST 08:00)   ║');
 console.log('║  Job 2 (YouTube Shorts) : 매일 UTC 23:05 (KST 08:05)   ║');
 console.log('╚══════════════════════════════════════════════════════════╝');
 console.log('');
+
+// ─── ONE-TIME TEST: run YouTube Shorts immediately on deploy ───
+(async () => {
+    console.log('🧪 [TEST] Running YouTube Shorts pipeline immediately...');
+    try {
+          const result = await runYouTubeShorts();
+          if (result.success) {
+                  console.log(`✅ [TEST] YouTube Shorts uploaded: ${result.videoUrl}`);
+          } else {
+                  console.error(`⚠️ [TEST] YouTube Shorts failed: ${result.error}`);
+          }
+    } catch (e) {
+          console.error('❌ [TEST] Unexpected error:', e.message);
+          console.error(e.stack);
+    }
+})();
