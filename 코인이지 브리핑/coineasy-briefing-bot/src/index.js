@@ -2,10 +2,13 @@
 // ============
 // CoinEasyInsightBriefing — main entry point.
 //
-// Runs two independent daily cron jobs (KST 08:00 = UTC 23:00):
-//   1. Figma banner → Telegram announcement channel  (UTC 23:00)
-//   2. YouTube Shorts generation + upload             (UTC 23:05)
+// Runs four independent daily cron jobs:
+//   1. Figma banner → Telegram (KST 08:00 = UTC 23:00)
+//   2. YouTube Shorts AM      (KST 08:05 = UTC 23:05)
+//   3. Figma banner → Telegram (KST 18:00 = UTC 09:00)
+//   4. YouTube Shorts PM      (KST 18:05 = UTC 09:05)
 //
+// Session types: 'morning' and 'evening'
 // All jobs are isolated; a failure in one does not abort the other.
 
 'use strict';
@@ -17,100 +20,156 @@ const { buildPayload }        = require('./figma-daily/figmaDataBuilder');
 const { generateYouTubeShort } = require('./youtube-shorts-generator');
 const { uploadToYouTube, cleanupVideo } = require('./youtube-uploader');
 
+// ─── Session helper ──────────────────────────────────────
+
+function getSession(now) {
+  const kstHour = (now.getUTCHours() + 9) % 24;
+  if (kstHour < 12) {
+    return {
+      type: 'morning',
+      label: '아침',
+      greeting: '좋은 아침입니다',
+      footer: '매일 아침 8시 · 저녁 6시',
+      cta: '오늘 하루도 현명한 투자 하세요',
+    };
+  }
+  return {
+    type: 'evening',
+    label: '저녁',
+    greeting: '저녁 시황 업데이트입니다',
+    footer: '매일 아침 8시 · 저녁 6시',
+    cta: '내일도 코인이지와 함께 하세요',
+  };
+}
+
 // ─── YouTube Shorts pipeline ─────────────────────────────
 
-async function runYouTubeShorts() {
-    const startTs = new Date();
-    console.log(`[${startTs.toISOString()}] 🎬 YouTube Shorts 파이프라인 시작`);
+async function runYouTubeShorts(session) {
+  const startTs = new Date();
+  console.log(`[${startTs.toISOString()}] 🎬 YouTube Shorts (${session.label}) 파이프라인 시작`);
 
   let videoPath = null;
 
   try {
-        // 1) Fetch market data (reuse the same payload builder as the banner)
-      console.log('  📊 시장 데이터 수집 중…');
-        const payload = await buildPayload(startTs);
-        console.log('  ✓ 페이로드 빌드 완료');
+    console.log('  📊 시장 데이터 수집 중…');
+    const payload = await buildPayload(startTs, session);
+    console.log('  ✓ 페이로드 빌드 완료');
 
-      // 2) Generate the Short video
-      console.log('  🎥 YouTube Short 영상 생성 중…');
-        videoPath = await generateYouTubeShort(payload);
-        console.log(`  ✓ 영상 생성 완료: ${videoPath}`);
+    console.log('  🎥 YouTube Short 영상 생성 중…');
+    videoPath = await generateYouTubeShort(payload);
+    console.log(`  ✓ 영상 생성 완료: ${videoPath}`);
 
-      // 3) Upload to YouTube
-      console.log('  📤 YouTube 업로드 중…');
-        const videoUrl = await uploadToYouTube(videoPath, payload, startTs);
-        console.log(`  ✓ YouTube 업로드 완료: ${videoUrl}`);
+    console.log('  📤 YouTube 업로드 중…');
+    const videoUrl = await uploadToYouTube(videoPath, payload, startTs);
+    console.log(`  ✓ YouTube 업로드 완료: ${videoUrl}`);
 
-      // 4) Clean up local file
-      cleanupVideo(videoPath);
+    cleanupVideo(videoPath);
 
-      const elapsedMs = Date.now() - startTs.getTime();
-        console.log(`[${new Date().toISOString()}] ✅ YouTube Shorts 완료 (${elapsedMs}ms)`);
+    const elapsedMs = Date.now() - startTs.getTime();
+    console.log(`[${new Date().toISOString()}] ✅ YouTube Shorts (${session.label}) 완료 (${elapsedMs}ms)`);
 
-      return { success: true, videoUrl, elapsedMs };
+    return { success: true, videoUrl, elapsedMs };
 
   } catch (e) {
-        console.error(`[${new Date().toISOString()}] ✗ YouTube Shorts 에러: ${e.message}`);
-        console.error(e.stack);
+    console.error(`[${new Date().toISOString()}] ✗ YouTube Shorts (${session.label}) 에러: ${e.message}`);
+    console.error(e.stack);
 
-      // Best-effort cleanup on failure
-      if (videoPath) {
-              try { cleanupVideo(videoPath); } catch (_) { /* ignore */ }
-      }
+    if (videoPath) {
+      try { cleanupVideo(videoPath); } catch (_) { /* ignore */ }
+    }
 
-      return { success: false, error: e.message };
+    return { success: false, error: e.message };
   }
 }
 
 // ─── Cron schedule ───────────────────────────────────────
 
-// Job 1: Figma banner → Telegram (UTC 23:00 = KST 08:00)
-cron.schedule('0 23 * * *', async () => {
-    console.log('\n' + '='.repeat(60));
-    console.log(`[${new Date().toISOString()}] ⏰ Job 1: Figma/Telegram 시작`);
-    console.log('='.repeat(60));
+// MORNING (KST 08:00 = UTC 23:00)
 
-                try {
-                      const result = await runDailyFigma();
-                      if (result.success) {
-                              console.log(`[${new Date().toISOString()}] ✅ Job 1 완료`);
-                      } else {
-                              console.error(`[${new Date().toISOString()}] ⚠️ Job 1 실패: ${result.error}`);
-                      }
-                } catch (e) {
-                      // Catch any unexpected error so it never propagates to the cron runner
-      console.error(`[${new Date().toISOString()}] ✗ Job 1 예외: ${e.message}`);
-                      console.error(e.stack);
-                }
+cron.schedule('0 23 * * *', async () => {
+  const session = getSession(new Date());
+  console.log('\n' + '='.repeat(60));
+  console.log(`[${new Date().toISOString()}] ⏰ Job 1: Figma/Telegram (${session.label}) 시작`);
+  console.log('='.repeat(60));
+
+  try {
+    const result = await runDailyFigma();
+    if (result.success) {
+      console.log(`[${new Date().toISOString()}] ✅ Job 1 완료`);
+    } else {
+      console.error(`[${new Date().toISOString()}] ⚠️ Job 1 실패: ${result.error}`);
+    }
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] ✗ Job 1 예외: ${e.message}`);
+    console.error(e.stack);
+  }
 }, { timezone: 'UTC' });
 
-// Job 2: YouTube Shorts (UTC 23:05 = KST 08:05, 5 min after Figma)
 cron.schedule('5 23 * * *', async () => {
-    console.log('\n' + '='.repeat(60));
-    console.log(`[${new Date().toISOString()}] ⏰ Job 2: YouTube Shorts 시작`);
-    console.log('='.repeat(60));
+  const session = getSession(new Date());
+  console.log('\n' + '='.repeat(60));
+  console.log(`[${new Date().toISOString()}] ⏰ Job 2: YouTube Shorts (${session.label}) 시작`);
+  console.log('='.repeat(60));
 
-                try {
-                      const result = await runYouTubeShorts();
-                      if (result.success) {
-                              console.log(`[${new Date().toISOString()}] ✅ Job 2 완료: ${result.videoUrl}`);
-                      } else {
-                              console.error(`[${new Date().toISOString()}] ⚠️ Job 2 실패: ${result.error}`);
-                      }
-                } catch (e) {
-                      // Catch any unexpected error so it never propagates to the cron runner
-      console.error(`[${new Date().toISOString()}] ✗ Job 2 예외: ${e.message}`);
-                      console.error(e.stack);
-                }
+  try {
+    const result = await runYouTubeShorts(session);
+    if (result.success) {
+      console.log(`[${new Date().toISOString()}] ✅ Job 2 완료: ${result.videoUrl}`);
+    } else {
+      console.error(`[${new Date().toISOString()}] ⚠️ Job 2 실패: ${result.error}`);
+    }
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] ✗ Job 2 예외: ${e.message}`);
+    console.error(e.stack);
+  }
+}, { timezone: 'UTC' });
+
+// EVENING (KST 18:00 = UTC 09:00)
+
+cron.schedule('0 9 * * *', async () => {
+  const session = getSession(new Date());
+  console.log('\n' + '='.repeat(60));
+  console.log(`[${new Date().toISOString()}] ⏰ Job 3: Figma/Telegram (${session.label}) 시작`);
+  console.log('='.repeat(60));
+
+  try {
+    const result = await runDailyFigma();
+    if (result.success) {
+      console.log(`[${new Date().toISOString()}] ✅ Job 3 완료`);
+    } else {
+      console.error(`[${new Date().toISOString()}] ⚠️ Job 3 실패: ${result.error}`);
+    }
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] ✗ Job 3 예외: ${e.message}`);
+    console.error(e.stack);
+  }
+}, { timezone: 'UTC' });
+
+cron.schedule('5 9 * * *', async () => {
+  const session = getSession(new Date());
+  console.log('\n' + '='.repeat(60));
+  console.log(`[${new Date().toISOString()}] ⏰ Job 4: YouTube Shorts (${session.label}) 시작`);
+  console.log('='.repeat(60));
+
+  try {
+    const result = await runYouTubeShorts(session);
+    if (result.success) {
+      console.log(`[${new Date().toISOString()}] ✅ Job 4 완료: ${result.videoUrl}`);
+    } else {
+      console.error(`[${new Date().toISOString()}] ⚠️ Job 4 실패: ${result.error}`);
+    }
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] ✗ Job 4 예외: ${e.message}`);
+    console.error(e.stack);
+  }
 }, { timezone: 'UTC' });
 
 // ─── Startup ─────────────────────────────────────────────
 
 console.log('');
-console.log('╔══════════════════════════════════════════════════════════╗');
-console.log('║  CoinEasyInsightBriefing — 스케줄러 시작                ║');
-console.log('╠══════════════════════════════════════════════════════════╣');
-console.log('║  Job 1 (Figma/Telegram) : 매일 UTC 23:00 (KST 08:00)  ║');
-console.log('║  Job 2 (YouTube Shorts) : 매일 UTC 23:05 (KST 08:05)  ║');
-console.log('╚══════════════════════════════════════════════════════════╝');
+console.log('CoinEasyInsightBriefing - scheduler started');
+console.log('Job 1 (Figma AM)  : daily UTC 23:00 (KST 08:00)');
+console.log('Job 2 (Shorts AM) : daily UTC 23:05 (KST 08:05)');
+console.log('Job 3 (Figma PM)  : daily UTC 09:00 (KST 18:00)');
+console.log('Job 4 (Shorts PM) : daily UTC 09:05 (KST 18:05)');
 console.log('');
