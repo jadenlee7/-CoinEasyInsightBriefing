@@ -25,8 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                         # Copy everything
                                                         COPY . /repo
 
-                                                        # Find the coineasy-briefing-bot directory and copy its contents to /app
-                                                        RUN DIR=$(find /repo -type d -name "coineasy-briefing-bot" | head -1) && \
+                                                        # Find the CORRECT coineasy-briefing-bot directory (the one with generator.js)
+                                                        RUN DIR=$(find /repo -type f -name "generator.js" -path "*/coineasy-briefing-bot/src/*" -exec dirname {} \; | head -1 | xargs dirname) && \
+                                                            echo "Using bot directory: $DIR" && \
                                                             cp -r "$DIR"/. /app/
 
                                                             # Install dependencies

@@ -17,14 +17,14 @@
 
 import cron from 'node-cron';
 import { collectAllData } from './fetcher.js';
-import { generateTelegramBriefing, generateBlogDraft, generateXPost, generateShortsScript } from './generator.js';
+import { generateTelegramBriefing, generateBlogDraft, generateXPost } from './generator.js';
 import { sendTelegramMessage, broadcastBriefing } from './telegram.js';
 import { exportFigmaBanner, sendTelegramPhoto, uploadMediaToX } from './figma-banner.js';
 import { postToX } from './x-poster.js';
-import { createShortsVideo, cleanupTempFiles } from './video-generator.js';
-import { uploadToYouTube } from './youtube-uploader.js';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { generateYouTubeShort } from './youtube-shorts-generator.js';
+import { uploadToYouTube as uploadYTShort, cleanupVideo } from './youtube-uploader-new.js';
 
 // ============================================================
 
@@ -200,36 +200,9 @@ async function runBriefingPipeline(isFirstRun = false) {
                               console.log('\n⏭️ Step 6/7: X 포스팅 스킵 (비활성화)');
               }
 
-              // Step 7: YouTube Shorts (아침 8시만)
-              if (CONFIG.enableYouTube && isFirstRun) {
-                              console.log('\n🎬 Step 7/7: YouTube Shorts 생성 중...');
-                              try {
-                                                const shortsScript = await generateShortsScript(data, telegramBriefing);
-                                                if (shortsScript) {
-                                                                    console.log(` 📝 나레이션: ${shortsScript.narration?.substring(0, 50)}...`);
-                                                                    const videoPath = await createShortsVideo(shortsScript, data);
-                                                                    if (videoPath) {
-                                                                                          const uploadResult = await uploadToYouTube(videoPath, { title: shortsScript.title });
-                                                                                          if (uploadResult.success) {
-                                                                                                                  console.log(` ✅ YouTube 업로드 완료! ${uploadResult.videoUrl}`);
-                                                                                                                  console.log(` 🔒 비공개 상태 (수동 공개 필요)`);
-                                                                                                    } else {
-                                                                                                                  console.log(` ❌ YouTube 업로드 실패: ${uploadResult.error}`);
-                                                                                                    }
-                                                                                          await cleanupTempFiles();
-                                                                    } else {
-                                                                                          console.log(' ⚠️ 영상 생성 실패');
-                                                                    }
-                                                } else {
-                                                                    console.log(' ⚠️ 쇼츠 스크립트 생성 실패');
-                                                }
-                              } catch (ytErr) {
-                                                console.error(` ❌ YouTube Shorts 에러: ${ytErr.message}`);
-                              }
-              } else if (!isFirstRun) {
-                              console.log('\n⏭️ Step 7/7: YouTube Shorts 스킵 (아침 실행 아님)');
-              } else {
-                              console.log('\n⏭️ Step 7/7: YouTube Shorts 스킵 (비활성화)');
+// Step 8: YouTube Shorts (아침 8시만)
+              if (isFirstRun) {
+                              await runYouTubeShortsIfEnabled(data);
               }
 
               // 완료
@@ -249,6 +222,77 @@ async function runBriefingPipeline(isFirstRun = false) {
                 console.error(`\n❌ 파이프라인 에러: ${err.message}`);
                 console.error(err.stack);
   }
+}
+
+// ============================================================
+// YouTube Shorts 파이프라인
+// ============================================================
+async function runYouTubeShortsIfEnabled(data) {
+            const ytEnabled = process.env.YT_CLIENT_ID && process.env.YT_REFRESH_TOKEN;
+            if (!ytEnabled) {
+                          console.log('\n⏭️ YouTube Shorts 스킵 (YT 환경변수 미설정)');
+                          return;
+            }
+            console.log('\n🎬 YouTube Shorts 생성 중...');
+            let videoPath = null;
+            try {
+                          // buildPayload from figmaDataBuilder (uses same data)
+                          const { buildPayload } = await import('./figma-daily/runDailyFigma.js')
+                                        .then(() => import('./canvas-banner.js'))
+                                        .catch(() => ({}));
+
+                          // Use the canvas-banner's payload builder as fallback
+                          const payload = {
+                                        texts: {
+                                                      date_label: data.dateKST || new Date().toLocaleDateString('ko-KR'),
+                                                      btc_price: data.market?.[0] ? `$${Math.round(data.market[0].price).toLocaleString('en-US')}` : '$--',
+                                                      btc_change: data.market?.[0] ? `${parseFloat(data.market[0].change24h) >= 0 ? '+' : ''}${parseFloat(data.market[0].change24h).toFixed(2)}%` : '--',
+                                                      eth_price: data.market?.[1] ? `$${Math.round(data.market[1].price).toLocaleString('en-US')}` : '$--',
+                                                      eth_change: data.market?.[1] ? `${parseFloat(data.market[1].change24h) >= 0 ? '+' : ''}${parseFloat(data.market[1].change24h).toFixed(2)}%` : '--',
+                                                      sol_price: data.market?.[2] ? `$${data.market[2].price.toFixed(1)}` : '$--',
+                                                      sol_change: data.market?.[2] ? `${parseFloat(data.market[2].change24h) >= 0 ? '+' : ''}${parseFloat(data.market[2].change24h).toFixed(2)}%` : '--',
+                                                      sui_price: data.market?.[3] ? `$${data.market[3].price.toFixed(3)}` : '$--',
+                                                      sui_change: data.market?.[3] ? `${parseFloat(data.market[3].change24h) >= 0 ? '+' : ''}${parseFloat(data.market[3].change24h).toFixed(2)}%` : '--',
+                                                      xrp_price: data.market?.[4] ? `$${data.market[4].price.toFixed(2)}` : '$--',
+                                                      xrp_change: data.market?.[4] ? `${parseFloat(data.market[4].change24h) >= 0 ? '+' : ''}${parseFloat(data.market[4].change24h).toFixed(2)}%` : '--',
+                                                      market_change: `MARKET ${data.global?.marketCapChange24h || '0'}%`,
+                                                      kimchi_rate: data.kimchi ? `환율: ₩${data.kimchi.krwRate}/USDT` : '--',
+                                                      kimchi_premium: data.kimchi?.premium ? `${data.kimchi.premium}%` : '0%',
+                                                      kimchi_note: '정상 범위',
+                                                      fear_value: String(data.fearGreed?.value || '--'),
+                                                      fear_label: data.fearGreed?.label || '--',
+                                                      fear_note: '시장 심리 확인 중',
+                                                      defi_1_name: data.defi?.topByTVL?.[0]?.name || '--',
+                                                      defi_1_change: `${parseFloat(data.defi?.topByTVL?.[0]?.change1d || 0).toFixed(2)}%`,
+                                                      defi_2_name: data.defi?.topGainers?.[0]?.name || '--',
+                                                      defi_2_change: `${parseFloat(data.defi?.topGainers?.[0]?.change1d || 0).toFixed(2)}%`,
+                                                      defi_3_name: data.defi?.topLosers?.[0]?.name || '--',
+                                                      defi_3_change: `${parseFloat(data.defi?.topLosers?.[0]?.change1d || 0).toFixed(2)}%`,
+                                                      trend_1_name: data.trending?.[0] ? `${data.trending[0].symbol} (${data.trending[0].name})` : '--',
+                                                      trend_1_change: `${parseFloat(data.trending?.[0]?.priceChange24h || 0).toFixed(2)}%`,
+                                                      trend_2_name: data.trending?.[1] ? `${data.trending[1].symbol} (${data.trending[1].name})` : '--',
+                                                      trend_2_change: `${parseFloat(data.trending?.[1]?.priceChange24h || 0).toFixed(2)}%`,
+                                                      trend_3_name: data.trending?.[2] ? `${data.trending[2].symbol} (${data.trending[2].name})` : '--',
+                                                      trend_3_change: `${parseFloat(data.trending?.[2]?.priceChange24h || 0).toFixed(2)}%`,
+                                                      quote_line1: '코인이지와 함께 오늘도 이지하게',
+                                                      quote_line2: '시장을 읽고, 기회를 잡자',
+                                        },
+                                        gauge: { fill_pct: parseInt(data.fearGreed?.value || 50) / 100 },
+                                        colors: {},
+                                        session: { type: 'morning', label: '아침', footer: '매일 아침 8시', cta: '오늘 하루도 현명한 투자 하세요' },
+                          };
+
+                          videoPath = await generateYouTubeShort(payload);
+                          console.log(`  ✅ YouTube Short 영상 생성 완료: ${videoPath}`);
+
+                          const videoUrl = await uploadYTShort(videoPath, payload, new Date());
+                          console.log(`  ✅ YouTube 업로드 완료: ${videoUrl}`);
+
+                          cleanupVideo(videoPath);
+            } catch (ytErr) {
+                          console.error(`  ❌ YouTube Shorts 에러: ${ytErr.message}`);
+                          if (videoPath) { try { cleanupVideo(videoPath); } catch (_) {} }
+            }
 }
 
 // ============================================================
@@ -293,3 +337,14 @@ if (runNow) {
   // 시작 시 1회 테스트 실행 (풀 파이프라인)
   runBriefingPipeline(true);
 }
+
+// ============================================================
+// Crash protection
+// ============================================================
+process.on('unhandledRejection', (reason, promise) => {
+            console.error('⚠️ Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+            console.error('⚠️ Uncaught Exception:', err.message);
+            console.error(err.stack);
+});
