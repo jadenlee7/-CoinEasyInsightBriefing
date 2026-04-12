@@ -25,13 +25,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                         # Copy everything
                                                         COPY . /repo
 
-                                                        # Find the CORRECT coineasy-briefing-bot directory (the one with generator.js)
-                                                        RUN DIR=$(find /repo -type f -name "generator.js" -path "*/coineasy-briefing-bot/src/*" -exec dirname {} \; | head -1 | xargs dirname) && \
-                                                            echo "Using bot directory: $DIR" && \
-                                                            cp -r "$DIR"/. /app/
+                                                        # Use bash for proper Unicode path handling (Korean NFD/NFC folder names)
+                                                        SHELL ["/bin/bash", "-c"]
 
-                                                            # Install dependencies
-                                                            RUN npm install --only=production
+                                                        # Find coineasy-briefing-bot directory safely
+                                                        # Uses -print0 + read to handle Korean Unicode paths without newline corruption
+                                                        RUN BOT_DIR="" && \
+                                                            while IFS= read -r -d '' file; do \
+                                                                  BOT_DIR="$(dirname "$(dirname "$file")")"; \
+                                                                        break; \
+                                                                            done < <(find /repo -type f -name "generator.js" -path "*/coineasy-briefing-bot/src/*" -print0) && \
+                                                                                if [ -z "$BOT_DIR" ]; then \
+                                                                                      echo "ERROR: coineasy-briefing-bot directory not found!" && exit 1; \
+                                                                                          fi && \
+                                                                                              echo "Using bot directory: $BOT_DIR" && \
+                                                                                                  cp -r "$BOT_DIR"/. /app/
 
-                                                            # Default command
-                                                            CMD ["npm", "start"]
+                                                                                                  # Install dependencies
+                                                                                                  RUN npm install --only=production
+
+                                                                                                  # Default command
+                                                                                                  CMD ["npm", "start"]
