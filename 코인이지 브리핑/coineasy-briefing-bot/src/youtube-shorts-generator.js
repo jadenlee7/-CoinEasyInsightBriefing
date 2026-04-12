@@ -171,7 +171,7 @@ function renderFrame(payload, t) {
   fillText(ctx, texts.quote_line2, W / 2, quoteY + 135, CFG.COLORS.gray, 'Regular', 30, 'center');
 
   // ── Footer ──
-  fillText(ctx, 'CoinEasy • 매일 아침 8시', W / 2, H - 60, CFG.COLORS.gray, 'Regular', 30, 'center');
+  fillText(ctx, `CoinEasy • ${payload.session ? payload.session.footer : '매일 아침 8시 · 저녁 6시'}`, W / 2, H - 60, CFG.COLORS.gray, 'Regular', 30, 'center');
 
          // — CTA (Telegram subscription) —
       roundRect(ctx, 40, H - 220, W - 80, 100, 16, CFG.COLORS.orange);
@@ -191,7 +191,7 @@ function renderFrame(payload, t) {
 async function generateTTS(payload, outDir) {
   const t = payload.texts;
   const script = [
-    `코인이지 데일리 마켓 브리핑입니다.`,
+    `코인이지 ${payload.session ? payload.session.greeting : '데일리 마켓 브리핑입니다'}.`,
     `${t.date_label}.`,
     `비트코인은 현재 ${t.btc_price}, ${t.btc_change}입니다.`,
     `이더리움 ${t.eth_price} ${t.eth_change},`,
@@ -199,8 +199,8 @@ async function generateTTS(payload, outDir) {
     `공포탐욕지수는 ${t.fear_value}, ${t.fear_label} 구간입니다.`,
     `김치 프리미엄은 ${t.kimchi_premium}.`,
     `오늘의 인사이트: ${t.quote_line1}. ${t.quote_line2}.`,
-    `코인이지와 함께 오늘도 현명한 투자 하세요.`,
-          `코인이지 텔레그램 채널에서 매일 아침 실시간 브리핑을 받아보세요. @coiniseasy를 검색하고 구독해주세요.`,
+    `${payload.session ? payload.session.cta : '코인이지와 함께 오늘도 현명한 투자 하세요'}.`,
+          `코인이지 텔레그램 채널에서 매일 아침 저녁 실시간 브리핑을 받아보세요. @coiniseasy를 검색하고 구독해주세요.`,
   ].join(' ');
 
   const audioPath = path.join(outDir, 'narration.mp3');
