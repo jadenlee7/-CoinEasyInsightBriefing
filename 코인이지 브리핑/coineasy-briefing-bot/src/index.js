@@ -38,7 +38,7 @@ function markdownToHtml(text) {
 }
 
 function buildFooter() {
-  return '\n\n#이지브리핑 #이지에드 #EasyEd #CoinEasy';
+  return '\n\n#이지브리핑';
 }
 // ─── 메인 브리핑 파이프라인 ────────────────────────────
 async function runBriefingPipeline() {
