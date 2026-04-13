@@ -23,11 +23,25 @@ async function fetchJSON(url, label = '', headers = {}) {
                   signal: AbortSignal.timeout(15000),
           });
           if (res.status === 429) { console.warn(`[FETCH] ${label} 429 rate limit, 5초 후 재시도...`); await new Promise(r => setTimeout(r, 5000)); const retry = await fetch(url, { headers: { 'Accept': 'application/json', ...headers }, signal: AbortSignal.timeout(15000) }); if (!retry.ok) throw new Error(`HTTP ${retry.status} (재시도)`); return await retry.json(); }
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return await res.json();
     } catch (err) {
           console.error(`[FETCH ERROR] ${label || url}: ${err.message}`);
           return null;
     }
+}
+
+async function fetchJSONWithRetry(url, label = '', headers = {}, retries = 3, delayMs = 3000) {
+    for (let i = 0; i < retries; i++) {
+          const result = await fetchJSON(url, label, headers);
+          if (result) return result;
+          if (i < retries - 1) {
+                  console.warn(`[RETRY] ${label} 재시도 ${i+2}/${retries} (${delayMs/1000}초 후)...`);
+                  await new Promise(r => setTimeout(r, delayMs));
+          }
+    }
+    console.error(`[FETCH FAIL] ${label}: ${retries}회 재시도 모두 실패`);
+    return null;
 }
 
 function pctChange(current, previous) {
@@ -48,7 +62,7 @@ function formatNum(n, decimals = 2) {
 // ============================================================
 
 async function fetchMarketOverview() {
-    const data = await fetchJSON(
+    const data = await fetchJSONWithRetry(
           `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,ripple,sui&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
           'CoinGecko Markets'
         );
@@ -69,7 +83,7 @@ async function fetchMarketOverview() {
 // ============================================================
 
 async function fetchGlobalData() {
-    const data = await fetchJSON(`${COINGECKO_BASE}/global`, 'CoinGecko Global');
+    const data = await fetchJSONWithRetry(`${COINGECKO_BASE}/global`, 'CoinGecko Global');
     if (!data?.data) return null;
     const g = data.data;
     return {
@@ -86,7 +100,7 @@ async function fetchGlobalData() {
 // ============================================================
 
 async function fetchTrending() {
-    const data = await fetchJSON(`${COINGECKO_BASE}/search/trending`, 'CoinGecko Trending');
+    const data = await fetchJSONWithRetry(`${COINGECKO_BASE}/search/trending`, 'CoinGecko Trending');
     if (!data?.coins) return null;
     return data.coins.slice(0, 7).map(c => ({
           symbol: c.item.symbol.toUpperCase(),
