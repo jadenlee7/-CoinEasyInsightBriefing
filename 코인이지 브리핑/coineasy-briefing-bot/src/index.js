@@ -177,8 +177,3 @@ console.log('Job 2 (Shorts AM)   : daily UTC 23:05 (KST 08:05)');
 console.log('Job 3 (Briefing PM) : daily UTC 09:00 (KST 18:00)');
 console.log('Job 4 (Shorts PM)   : daily UTC 09:05 (KST 18:05)');
 console.log('');
-
-
-// ─── ONE-TIME TEST (자동 삭제 예정) ───────────────────
-console.log('🧪 수동 테스트: 배너+브리핑 합쳐진 포스트 확인');
-setTimeout(() => runBriefingPipeline(), 5000);
