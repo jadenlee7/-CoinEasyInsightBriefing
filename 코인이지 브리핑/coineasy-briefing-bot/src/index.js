@@ -37,19 +37,9 @@ function markdownToHtml(text) {
     .replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
-function buildFooter(data) {
-  const lines = [];
-  const sources = [];
-  if (data.market) sources.push('<a href="https://www.coingecko.com">CoinGecko</a>');
-  if (data.fearGreed) sources.push('<a href="https://alternative.me/crypto/fear-and-greed-index/">Alternative.me</a>');
-  if (data.defi) sources.push('<a href="https://defillama.com">DefiLlama</a>');
-  if (sources.length > 0) {
-    lines.push('\n<b>출처</b>\n' + sources.join(' · '));
-  }
-  lines.push('\n📢 <a href="https://t.me/coiniseasy">공지방</a> · 💬 <a href="https://t.me/coineasy_official">채팅방</a> · ✖ <a href="https://x.com/Coiniseasy">X</a>');
-  return lines.join('\n');
+function buildFooter() {
+  return '\n\n#이지브리핑 #이지에드 #EasyEd #CoinEasy';
 }
-
 // ─── 메인 브리핑 파이프라인 ────────────────────────────
 async function runBriefingPipeline() {
   const startTime = Date.now();
@@ -67,50 +57,52 @@ async function runBriefingPipeline() {
       return;
     }
 
-    // Step 2: 배너 이미지 생성 + 텔레그램 공지방 포스팅
-    console.log('\n🎨 Step 2: 배너 이미지 생성 중...');
+    // Step 2: AI 텍스트 브리핑 생성
+    console.log('\n✍️ Step 2: AI 텍스트 브리핑 생성 중...');
+    let briefingText = '';
+    const telegramBriefing = await generateTelegramBriefing(data);
+    if (telegramBriefing) {
+      // ## 헤더 제거 (혹시 AI가 생성했을 경우 안전장치)
+      briefingText = telegramBriefing.replace(/^##\s*/gm, '') + buildFooter();
+      console.log(`  ✅ 브리핑 생성 완료 (${briefingText.length}자)`);
+    } else {
+      console.error('  ❌ 브리핑 생성 실패');
+    }
+
+    // Step 3: 배너 이미지 생성 + 브리핑 캡션으로 합쳐서 한 포스트로 전송
+    console.log('\n🎨 Step 3: 배너 이미지 생성 + 포스팅...');
     const targetChatId = CONFIG.channelId || CONFIG.chatId;
     try {
       const bannerResult = await exportFigmaBanner(data);
       if (bannerResult && bannerResult.buffer) {
         console.log(`  ✅ 배너 생성 완료 (${(bannerResult.size / 1024).toFixed(1)}KB)`);
         if (targetChatId && CONFIG.botToken) {
+          // 배너 이미지 + 텍스트 브리핑을 캡션으로 합쳐서 하나의 포스트로 전송
+          const caption = briefingText || null;
           const photoSent = await sendTelegramPhoto(
             bannerResult.buffer,
-            null,
+            caption,
             targetChatId,
             CONFIG.botToken
           );
-          console.log(`  ${photoSent ? '✅' : '❌'} 배너 이미지 공지방 발송`);
+          console.log(`  ${photoSent ? '✅' : '❌'} 배너+브리핑 합쳐서 공지방 발송`);
         }
       } else {
-        console.log('  ⚠️ 배너 생성 실패 — 텍스트 브리핑만 발송');
+        console.log('  ⚠️ 배너 생성 실패 — 텍스트만 발송');
+        if (briefingText && targetChatId && CONFIG.botToken) {
+          const htmlBriefing = markdownToHtml(briefingText);
+          await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
+          console.log('  ✅ 텍스트 브리핑만 공지방 발송');
+        }
       }
     } catch (bannerErr) {
       console.error(`  ⚠️ 배너 에러: ${bannerErr.message}`);
-    }
-
-    // Step 3: AI 텍스트 브리핑 생성 + 공지방 발송
-    console.log('\n✍️ Step 3: AI 텍스트 브리핑 생성 중...');
-    const telegramBriefing = await generateTelegramBriefing(data);
-    if (telegramBriefing) {
-      const htmlBriefing = markdownToHtml(telegramBriefing) + buildFooter(data);
-      if (targetChatId && CONFIG.botToken) {
-        const textSent = await sendTelegramMessage(
-          htmlBriefing,
-          targetChatId,
-          CONFIG.botToken
-        );
-        console.log(`  ${textSent ? '✅' : '❌'} 텍스트 브리핑 공지방 발송`);
+      // 배너 실패 시 텍스트만 발송
+      if (briefingText && targetChatId && CONFIG.botToken) {
+        const htmlBriefing = markdownToHtml(briefingText);
+        await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
+        console.log('  ✅ 텍스트 브리핑만 공지방 발송 (배너 fallback)');
       }
-
-      // 개인톡에도 발송 (채널과 다를 경우)
-      if (CONFIG.chatId && CONFIG.chatId !== targetChatId && CONFIG.botToken) {
-        await sendTelegramMessage(htmlBriefing, CONFIG.chatId, CONFIG.botToken);
-        console.log('  ✅ 텍스트 브리핑 개인톡 발송');
-      }
-    } else {
-      console.error('  ❌ 브리핑 생성 실패');
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
