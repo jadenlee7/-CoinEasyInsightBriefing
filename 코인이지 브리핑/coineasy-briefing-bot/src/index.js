@@ -173,17 +173,3 @@ console.log('Job 2 (Shorts AM) : daily UTC 23:05 (KST 08:05)');
 console.log('Job 3 (Figma PM)  : daily UTC 09:00 (KST 18:00)');
 console.log('Job 4 (Shorts PM) : daily UTC 09:05 (KST 18:05)');
 console.log('');
-
-// === ONE-TIME TEST: run immediately on deploy ===
-(async () => {
-  console.log('[TEST] 🚀 즉시 실행 테스트 시작...');
-  try {
-    const session = getSession(new Date());
-    console.log('[TEST] Session:', session.label);
-    const result = await runDailyFigma();
-    console.log('[TEST] runDailyFigma result:', JSON.stringify(result, null, 2));
-  } catch (e) {
-    console.error('[TEST] 에러:', e.message);
-    console.error(e.stack);
-  }
-})();
