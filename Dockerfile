@@ -2,47 +2,17 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install FFmpeg, Python3, pip for Edge TTS, fonts, and node-canvas dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-        python3 \
-            python3-pip \
-                python3-venv \
-                    fonts-noto-cjk \
-                        fonts-dejavu-core \
-                            libcairo2-dev \
-                                libpango1.0-dev \
-                                    libjpeg-dev \
-                                        libgif-dev \
-                                            librsvg2-dev \
-                                                pkg-config \
-                                                    build-essential \
-                                                        && rm -rf /var/lib/apt/lists/*
+    ffmpeg python3 python3-pip python3-venv \
+    fonts-noto-cjk fonts-dejavu-core \
+    libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev \
+    librsvg2-dev pkg-config build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-                                                        # Install Edge TTS (Korean TTS engine)
-                                                        RUN pip3 install --break-system-packages edge-tts
+RUN pip3 install --break-system-packages edge-tts
 
-                                                        # Copy everything
-                                                        COPY . /repo
+COPY ./coineasy-briefing-bot /app
 
-                                                        # Use bash for proper Unicode path handling (Korean NFD/NFC folder names)
-                                                        SHELL ["/bin/bash", "-c"]
+RUN npm install --only=production
 
-                                                        # Find coineasy-briefing-bot directory safely
-                                                        # Uses -print0 + read to handle Korean Unicode paths without newline corruption
-                                                        RUN BOT_DIR="" && \
-                                                            while IFS= read -r -d '' file; do \
-                                                                  BOT_DIR="$(dirname "$(dirname "$file")")"; \
-                                                                        break; \
-                                                                            done < <(find /repo -type f -name "generator.js" -path "*/coineasy-briefing-bot/src/*" -print0) && \
-                                                                                if [ -z "$BOT_DIR" ]; then \
-                                                                                      echo "ERROR: coineasy-briefing-bot directory not found!" && exit 1; \
-                                                                                          fi && \
-                                                                                              echo "Using bot directory: $BOT_DIR" && \
-                                                                                                  cp -r "$BOT_DIR"/. /app/
-
-                                                                                                  # Install dependencies
-                                                                                                  RUN npm install --only=production
-
-                                                                                                  # Default command
-                                                                                                  CMD ["npm", "start"]
+CMD ["npm", "start"]

@@ -2,6 +2,7 @@
  * Figma 플러그인이 소비할 JSON 구조 생성
   * 플러그인에서 이 JSON을 붙여넣으면 텍스트 노드가 자동 업데이트됨
    */
+
    export function buildFigmaJSON(data, quote) {
      const now = new Date();
        const dateStr = now.toLocaleDateString('ko-KR', {
@@ -33,26 +34,19 @@
                                                                                                'quote-text': quote.text,
                                                                                                      'quote-author': `— ${quote.author}`,
                                                                                                          },
-                                                                                                         
                                                                                                              // 스타일 힌트 (플러그인에서 색상 변경용)
                                                                                                                  styles: {
                                                                                                                        'btc-change-color': change >= 0 ? '#22C55E' : '#EF4444',
                                                                                                                              'fg-gauge-angle': gaugeAngle,
-                                                                                                                                   'fg-zone':
-                                                                                                                                           fgValue <= 25
-                                                                                                                                                     ? 'extreme-fear'
-                                                                                                                                                               : fgValue <= 45
-                                                                                                                                                                           ? 'fear'
-                                                                                                                                                                                       : fgValue <= 55
-                                                                                                                                                                                                     ? 'neutral'
-                                                                                                                                                                                                                   : fgValue <= 75
-                                                                                                                                                                                                                                   ? 'greed'
-                                                                                                                                                                                                                                                   : 'extreme-greed',
-                                                                                                                                                                                                                                                       },
-                                                                                                                                                                                                                                                       
-                                                                                                                                                                                                                                                           meta: {
-                                                                                                                                                                                                                                                                 generatedAt: now.toISOString(),
-                                                                                                                                                                                                                                                                       version: '1.0.0',
-                                                                                                                                                                                                                                                                           },
-                                                                                                                                                                                                                                                                             };
-                                                                                                                                                                                                                                                                             }
+                                                                                                                                   'fg-zone': fgValue <= 25 ? 'extreme-fear'
+                                                                                                                                           : fgValue <= 45 ? 'fear'
+                                                                                                                                                   : fgValue <= 55 ? 'neutral'
+                                                                                                                                                           : fgValue <= 75 ? 'greed'
+                                                                                                                                                                   : 'extreme-greed',
+                                                                                                                                                                       },
+                                                                                                                                                                           meta: {
+                                                                                                                                                                                 generatedAt: now.toISOString(),
+                                                                                                                                                                                       version: '1.0.0',
+                                                                                                                                                                                           },
+                                                                                                                                                                                             };
+                                                                                                                                                                                             }

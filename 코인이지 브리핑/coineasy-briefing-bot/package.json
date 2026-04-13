@@ -1,20 +1,26 @@
 {
-          "name": "coineasy-daily-briefing-bot",
-          "version": "1.2.0",
-          "description": "코인이지 데일리 브리핑 자동화 봇 - Telegram + X + 네이버 블로그 초안 + YouTube Shorts",
-          "main": "src/index.js",
-          "type": "module",
-          "scripts": {
-                      "start": "node src/index.js",
-                      "briefing": "node src/index.js --run-now",
-                      "test": "node src/test.js"
-          },
-          "dependencies": {
-                      "@anthropic-ai/sdk": "^0.39.0",
-                      "canvas": "^2.11.2",
-                      "googleapis": "^144.0.0",
-                      "node-cron": "^3.0.3",
-                      "node-fetch": "^3.3.2",
-                      "twitter-api-v2": "^1.17.2"
-          }
+  "name": "coineasy-briefing-bot",
+  "version": "1.0.0",
+  "description": "CoinEasy daily market briefing bot — Telegram, X, Figma, YouTube Shorts",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test:figma": "node src/figma-daily/runDailyFigma.js",
+    "test:shorts": "node src/youtube-shorts-generator.js",
+    "test:upload": "node src/youtube-uploader.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "canvas": "^2.11.2",
+    "fluent-ffmpeg": "^2.1.2",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^118.0.0",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2",
+    "telegram": "^2.19.7",
+    "twitter-api-v2": "^1.15.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -13,17 +13,19 @@
 //
 // Environment variables: none required (uses YT_* only in uploader)
 
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { execFile, spawn } from 'child_process';
-import { promisify } from 'util';
+'use strict';
+
+const fs      = require('fs');
+const path    = require('path');
+const os      = require('os');
+const { execFile, spawn } = require('child_process');
+const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
-import { createCanvas, registerFont } from 'canvas';
-import ffmpeg from 'fluent-ffmpeg';
+const { createCanvas, registerFont } = require('canvas');
+const ffmpeg = require('fluent-ffmpeg');
 
-import * as CFG from './youtube-shorts-config.js';
+const CFG = require('./youtube-shorts-config');
 
 // ─── Font setup ──────────────────────────────────────────
 const FONT_FAMILY = 'Noto Sans CJK KR';
@@ -334,7 +336,7 @@ async function generateYouTubeShort(payload) {
   }
 }
 
-export { generateYouTubeShort };
+module.exports = { generateYouTubeShort };
 
 // CLI test
 if (require.main === module) {

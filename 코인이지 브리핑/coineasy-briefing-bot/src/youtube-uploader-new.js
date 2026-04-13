@@ -12,13 +12,11 @@
 // Optional:
 //   YT_PRIVACY_STATUS - 'public' | 'unlisted' | 'private' (default: 'public')
 
-'use strict';
+import fs from 'fs';
+import path from 'path';
+import { google } from 'googleapis';
 
-const fs   = require('fs');
-const path = require('path');
-const { google } = require('googleapis');
-
-const CFG = require('./youtube-shorts-config');
+import * as CFG from './youtube-shorts-config.js';
 
 // ─── OAuth2 client ────────────────────────────────────────
 
@@ -186,7 +184,7 @@ function cleanupVideo(videoPath) {
   }
 }
 
-module.exports = { uploadToYouTube, cleanupVideo };
+export { uploadToYouTube, cleanupVideo };
 
 // CLI test
 if (require.main === module) {

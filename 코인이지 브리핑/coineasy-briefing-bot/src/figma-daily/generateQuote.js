@@ -2,6 +2,7 @@
  * Claude로 오늘의 크립토 인용문 생성
  * 기존 generator.js와 동일한 패턴 (@anthropic-ai/sdk 사용)
  */
+
 import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic();
