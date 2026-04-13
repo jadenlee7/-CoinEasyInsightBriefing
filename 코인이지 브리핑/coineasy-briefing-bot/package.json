@@ -1,6 +1,7 @@
 {
   "name": "coineasy-briefing-bot",
   "version": "1.0.0",
+  "type": "module",
   "description": "CoinEasy daily market briefing bot — Telegram, X, Figma, YouTube Shorts",
   "main": "src/index.js",
   "scripts": {
