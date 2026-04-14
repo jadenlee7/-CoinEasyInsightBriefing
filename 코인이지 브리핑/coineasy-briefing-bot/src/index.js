@@ -163,11 +163,12 @@ cron.schedule('0 9 * * *', async () => {
   await runBriefingPipeline();
 }, { timezone: 'UTC' });
 
-cron.schedule('5 9 * * *', async () => {
-  const session = getSession(new Date());
-  console.log(`\n⏰ Job 4: YouTube Shorts (${session.label}) 시작`);
-  await runYouTubeShorts(session);
-}, { timezone: 'UTC' });
+// [DISABLED - YouTube Shorts only at KST 08:00]
+// cron.schedule('5 9 * * *', async () => {
+  // const session = getSession(new Date());
+  // console.log(`\n⏰ Job 4: YouTube Shorts (${session.label}) 시작`);
+  // await runYouTubeShorts(session);
+// }, { timezone: 'UTC' });
 
 // ─── Startup ──────────────────────────────────────────
 console.log('');
