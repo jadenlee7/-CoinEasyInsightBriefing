@@ -53,9 +53,9 @@ function buildOAuth2Client() {
 function buildVideoMetadata(payload, now = new Date()) {
   const t = payload.texts;
 
-  // Title: "BTC $95,200 (+2.34%) | CoinEasy Daily — 5월 1일"
+  // Title: "BTC $95,200 (+2.34%) | 코인이지 데일리 — 5월 1일"
   const dateStr = `${now.getMonth() + 1}월 ${now.getDate()}일`;
-  const title   = `${t.btc_price} (${t.btc_change}) | CoinEasy Daily — ${dateStr}`.slice(0, 100);
+  const title   = `${t.btc_price} (${t.btc_change}) | 코인이지 데일리 — ${dateStr}`.slice(0, 100);
 
   // Description with market data + hashtags
   const hashtags = CFG.YT_DEFAULT_TAGS.map((tag) => `#${tag}`).join(' ');
