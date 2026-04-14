@@ -1,6 +1,6 @@
 // src/youtube-shorts-generator.js
 // ================================
-// Generates a vertical (9:16, 1080×1920) MP4 YouTube Short from the
+// Generates a vertical (9:16, 1080x1920) MP4 YouTube Short from the
 // daily market payload produced by figma-daily/figmaDataBuilder.js.
 //
 // Pipeline:
@@ -8,10 +8,10 @@
 //   2. Generate Korean TTS narration with edge-tts
 //   3. Compose frames + audio into an MP4 with fluent-ffmpeg
 //
-// Dependencies (all available in the Docker image or package.json):
-//   canvas, fluent-ffmpeg, edge-tts (Python CLI)
-//
-// Environment variables: none required (uses YT_* only in uploader)
+// Fixes:
+//   - Banner layout spacing fixed (no overlapping elements)
+//   - Korean subtitles rendered at bottom of video
+//   - All text in Korean
 
 'use strict';
 
@@ -19,320 +19,325 @@ const fs      = require('fs');
 const path    = require('path');
 const os      = require('os');
 const { execFile, spawn } = require('child_process');
-const { promisify } = require('util');
-const execFileAsync = promisify(execFile);
-
+const { promisify }       = require('util');
+const execFileAsync       = promisify(execFile);
 const { createCanvas, registerFont } = require('canvas');
-const ffmpeg = require('fluent-ffmpeg');
+const ffmpeg  = require('fluent-ffmpeg');
+const CFG     = require('./youtube-shorts-config');
 
-const CFG = require('./youtube-shorts-config');
-
-// ─── Font setup ──────────────────────────────────────────
+// --- Font setup ---
 const FONT_FAMILY = 'Noto Sans CJK KR';
 let _fontsRegistered = false;
 
 function ensureFonts() {
-  if (_fontsRegistered) return;
-  const variants = [
-    ['/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc',   'Black'],
-    ['/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',    'Bold'],
-    ['/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc',  'Medium'],
-    ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Regular'],
-  ];
-  for (const [fp, weight] of variants) {
-    try { registerFont(fp, { family: FONT_FAMILY, weight }); }
-    catch (_) { /* non-fatal — fontconfig may already know the font */ }
-  }
-  _fontsRegistered = true;
+    if (_fontsRegistered) return;
+    const variants = [
+          ['/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc',   'Black'],
+          ['/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',    'Bold'],
+          ['/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc',  'Medium'],
+          ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Regular'],
+        ];
+    for (const [fp, weight] of variants) {
+          try { registerFont(fp, { family: FONT_FAMILY, weight }); } catch (_) {}
+    }
+    _fontsRegistered = true;
 }
 
-// ─── Canvas helpers ───────────────────────────────────────
+// --- Canvas helpers ---
 function setFont(ctx, weight, size) {
-  ctx.font = `${weight} ${size}px "${FONT_FAMILY}"`;
+    ctx.font = `${weight} ${size}px "${FONT_FAMILY}"`;
 }
 
 function fillText(ctx, text, x, y, color, weight, size, align = 'left') {
-  setFont(ctx, weight, size);
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
-  ctx.fillText(text, x, y);
+    setFont(ctx, weight, size);
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.fillText(text, x, y);
 }
 
 function roundRect(ctx, x, y, w, h, r, fill) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
 }
 
-// ─── Frame renderer ───────────────────────────────────────
+// --- Subtitle text for each time segment ---
+function getSubtitleForTime(payload, t) {
+    const txt = payload.texts;
+    // Each subtitle shown for a portion of the video duration
+  const segments = [
+    { start: 0,  end: 4,  text: `${txt.date_label} 코인이지 마켓 브리핑` },
+    { start: 4,  end: 8,  text: `비트코인 ${txt.btc_price} (${txt.btc_change})` },
+    { start: 8,  end: 12, text: `이더리움 ${txt.eth_price} (${txt.eth_change})` },
+    { start: 12, end: 16, text: `솔라나 ${txt.sol_price} (${txt.sol_change})` },
+    { start: 16, end: 20, text: `공포탐욕지수 ${txt.fear_value} (${txt.fear_label})` },
+    { start: 20, end: 24, text: `김치 프리미엄 ${txt.kimchi_premium}` },
+    { start: 24, end: 30, text: `"${txt.quote_line1}"` },
+    { start: 30, end: 34, text: txt.quote_line2 },
+    { start: 34, end: 38, text: '코인이지 텔레그램 구독하세요!' },
+      ];
+    for (const seg of segments) {
+          if (t >= seg.start && t < seg.end) return seg.text;
+    }
+    return '';
+}
 
-/**
- * Render a single frame at time `t` (seconds) into a canvas.
- * Returns the canvas.
- */
+// --- Frame renderer ---
 function renderFrame(payload, t) {
-  ensureFonts();
-
-  const W = CFG.VIDEO_WIDTH;
-  const H = CFG.VIDEO_HEIGHT;
+    ensureFonts();
+    const W = CFG.VIDEO_WIDTH;   // 1080
+  const H = CFG.VIDEO_HEIGHT;  // 1920
   const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d');
+    const texts = payload.texts;
+    const colors = payload.colors;
 
-  const texts = payload.texts;
-  const colors = payload.colors;
-
-  // ── Background ──
+  // Background
   ctx.fillStyle = CFG.COLORS.bg;
-  ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, W, H);
 
-  // ── Fade-in / fade-out alpha ──
+  // Fade-in / fade-out
   let alpha = 1;
-  if (t < CFG.ANIM.fadeInDuration) {
-    alpha = t / CFG.ANIM.fadeInDuration;
-  } else if (t > CFG.ANIM.fadeOutStart) {
-    alpha = 1 - (t - CFG.ANIM.fadeOutStart) / CFG.ANIM.fadeOutDuration;
-  }
-  alpha = Math.max(0, Math.min(1, alpha));
-  ctx.globalAlpha = alpha;
+    if (t < CFG.ANIM.fadeInDuration) {
+          alpha = t / CFG.ANIM.fadeInDuration;
+    } else if (t > CFG.ANIM.fadeOutStart) {
+          alpha = 1 - (t - CFG.ANIM.fadeOutStart) / CFG.ANIM.fadeOutDuration;
+    }
+    alpha = Math.max(0, Math.min(1, alpha));
+    ctx.globalAlpha = alpha;
 
-  // ── Header ──
-  const headerY = 120;
-  fillText(ctx, 'CoinEasy', W / 2, headerY, CFG.COLORS.yellow, 'Black', 72, 'center');
-  fillText(ctx, '데일리 마켓 브리핑', W / 2, headerY + 80, CFG.COLORS.cream, 'Bold', 44, 'center');
-  fillText(ctx, texts.date_label, W / 2, headerY + 140, CFG.COLORS.gray, 'Regular', 36, 'center');
+  // === Header (Y: 80~260) ===
+  const headerY = 80;
+    fillText(ctx, 'CoinEasy', W / 2, headerY, CFG.COLORS.yellow, 'Black', 68, 'center');
+    fillText(ctx, '\uB370\uC77C\uB9AC \uB9C8\uCF13 \uBE0C\uB9AC\uD551', W / 2, headerY + 70, CFG.COLORS.cream, 'Bold', 40, 'center');
+    fillText(ctx, texts.date_label, W / 2, headerY + 125, CFG.COLORS.gray, 'Regular', 32, 'center');
 
-  // ── Divider ──
+  // Divider
   ctx.strokeStyle = CFG.COLORS.orange;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(60, headerY + 170);
-  ctx.lineTo(W - 60, headerY + 170);
-  ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(60, headerY + 155);
+    ctx.lineTo(W - 60, headerY + 155);
+    ctx.stroke();
 
-  // ── BTC card ──
-  const btcY = headerY + 210;
-  roundRect(ctx, 40, btcY, W - 80, 200, 20, CFG.COLORS.bgCard);
-  fillText(ctx, '₿ BTC', 80, btcY + 60, CFG.COLORS.yellow, 'Bold', 48);
-  fillText(ctx, texts.btc_price, 80, btcY + 130, CFG.COLORS.white, 'Black', 64);
-  const btcColor = colors.btc_change || CFG.COLORS.gray;
-  fillText(ctx, texts.btc_change, W - 80, btcY + 130, btcColor, 'Bold', 52, 'right');
+  // === BTC card (Y: 260~440) ===
+  const btcY = 260;
+    roundRect(ctx, 40, btcY, W - 80, 170, 20, CFG.COLORS.bgCard);
+    fillText(ctx, '\u20BF BTC', 80, btcY + 50, CFG.COLORS.yellow, 'Bold', 44);
+    fillText(ctx, texts.btc_price, 80, btcY + 115, CFG.COLORS.white, 'Black', 58);
+    const btcColor = colors.btc_change || CFG.COLORS.gray;
+    fillText(ctx, texts.btc_change, W - 80, btcY + 115, btcColor, 'Bold', 48, 'right');
 
-  // ── Alt coins ──
+  // === Alt coins (Y: 450~580) ===
   const altCoins = [
     { label: 'ETH', price: texts.eth_price, change: texts.eth_change, color: colors.eth_change },
     { label: 'SOL', price: texts.sol_price, change: texts.sol_change, color: colors.sol_change },
     { label: 'XRP', price: texts.xrp_price, change: texts.xrp_change, color: colors.xrp_change },
-  ];
-  const altY = btcY + 240;
-  const colW = (W - 80) / 3;
-  altCoins.forEach((coin, i) => {
-    const cx = 40 + i * colW;
-    roundRect(ctx, cx + 5, altY, colW - 10, 150, 16, CFG.COLORS.bgCard);
-    fillText(ctx, coin.label, cx + colW / 2, altY + 50, CFG.COLORS.cream, 'Bold', 36, 'center');
-    fillText(ctx, coin.price, cx + colW / 2, altY + 100, CFG.COLORS.white, 'Bold', 30, 'center');
-    fillText(ctx, coin.change, cx + colW / 2, altY + 140, coin.color || CFG.COLORS.gray, 'Regular', 28, 'center');
-  });
+      ];
+    const altY = 450;
+    const colW = (W - 100) / 3;
+    altCoins.forEach((coin, i) => {
+          const cx = 50 + i * (colW + 5);
+          roundRect(ctx, cx, altY, colW - 5, 130, 16, CFG.COLORS.bgCard);
+          fillText(ctx, coin.label, cx + (colW - 5) / 2, altY + 40, CFG.COLORS.cream, 'Bold', 32, 'center');
+          fillText(ctx, coin.price, cx + (colW - 5) / 2, altY + 80, CFG.COLORS.white, 'Bold', 26, 'center');
+          fillText(ctx, coin.change, cx + (colW - 5) / 2, altY + 112, coin.color || CFG.COLORS.gray, 'Regular', 24, 'center');
+    });
 
-  // ── Fear & Greed + Kimchi ──
-  const fgY = altY + 190;
-  roundRect(ctx, 40, fgY, W - 80, 160, 20, CFG.COLORS.bgCard);
-  fillText(ctx, '😨 공포탐욕지수', 80, fgY + 55, CFG.COLORS.cream, 'Bold', 36);
-  fillText(ctx, `${texts.fear_value} (${texts.fear_label})`, 80, fgY + 115, CFG.COLORS.white, 'Black', 48);
-  fillText(ctx, `🥬 김프 ${texts.kimchi_premium}`, W - 80, fgY + 85, CFG.COLORS.yellow, 'Bold', 36, 'right');
+  // === Fear & Greed + Kimchi (Y: 600~740) ===
+  const fgY = 600;
+    roundRect(ctx, 40, fgY, W - 80, 140, 20, CFG.COLORS.bgCard);
+    fillText(ctx, '\uD83D\uDE28 \uACF5\uD3EC\uD0D0\uC695\uC9C0\uC218', 80, fgY + 45, CFG.COLORS.cream, 'Bold', 32);
+    fillText(ctx, `${texts.fear_value} (${texts.fear_label})`, 80, fgY + 100, CFG.COLORS.white, 'Black', 42);
+    fillText(ctx, `\uD83E\uDD6C \uAE40\uD504 ${texts.kimchi_premium}`, W - 80, fgY + 72, CFG.COLORS.yellow, 'Bold', 32, 'right');
 
-  // ── Trending ──
-  const trendY = fgY + 200;
-  fillText(ctx, '🚀 트렌딩', 80, trendY, CFG.COLORS.orange, 'Bold', 40);
-  const trends = [
-    { name: texts.trend_1_name, change: texts.trend_1_change, color: colors.trend_1_change },
-    { name: texts.trend_2_name, change: texts.trend_2_change, color: colors.trend_2_change },
-    { name: texts.trend_3_name, change: texts.trend_3_change, color: colors.trend_3_change },
-  ];
-  trends.forEach((tr, i) => {
-    const ty = trendY + 55 + i * 70;
-    roundRect(ctx, 40, ty, W - 80, 60, 12, CFG.COLORS.bgCard);
-    fillText(ctx, tr.name, 80, ty + 40, CFG.COLORS.white, 'Regular', 30);
-    fillText(ctx, tr.change, W - 80, ty + 40, tr.color || CFG.COLORS.gray, 'Bold', 30, 'right');
-  });
+  // === Trending (Y: 760~1020) ===
+  const trendY = 760;
+    fillText(ctx, '\uD83D\uDE80 \uD2B8\uB80C\uB529', 80, trendY, CFG.COLORS.orange, 'Bold', 36);
+    const trends = [
+      { name: texts.trend_1_name, change: texts.trend_1_change, color: colors.trend_1_change },
+      { name: texts.trend_2_name, change: texts.trend_2_change, color: colors.trend_2_change },
+      { name: texts.trend_3_name, change: texts.trend_3_change, color: colors.trend_3_change },
+        ];
+    trends.forEach((tr, i) => {
+          const ty = trendY + 50 + i * 65;
+          roundRect(ctx, 40, ty, W - 80, 55, 12, CFG.COLORS.bgCard);
+          fillText(ctx, tr.name, 80, ty + 38, CFG.COLORS.white, 'Regular', 28);
+          fillText(ctx, tr.change, W - 80, ty + 38, tr.color || CFG.COLORS.gray, 'Bold', 28, 'right');
+    });
 
-  // ── Quote ──
-  const quoteY = trendY + 290;
-  roundRect(ctx, 40, quoteY, W - 80, 200, 20, CFG.COLORS.bgCard);
-  fillText(ctx, `"${texts.quote_line1}"`, W / 2, quoteY + 75, CFG.COLORS.cream, 'Medium', 34, 'center');
-  fillText(ctx, texts.quote_line2, W / 2, quoteY + 135, CFG.COLORS.gray, 'Regular', 30, 'center');
+  // === Quote (Y: 1040~1200) ===
+  const quoteY = 1040;
+    roundRect(ctx, 40, quoteY, W - 80, 160, 20, CFG.COLORS.bgCard);
+    fillText(ctx, `\u201C${texts.quote_line1}\u201D`, W / 2, quoteY + 60, CFG.COLORS.cream, 'Medium', 30, 'center');
+    fillText(ctx, texts.quote_line2, W / 2, quoteY + 115, CFG.COLORS.gray, 'Regular', 26, 'center');
 
-  // ── Footer ──
-  fillText(ctx, `CoinEasy • ${payload.session ? payload.session.footer : '매일 아침 8시 · 저녁 6시'}`, W / 2, H - 60, CFG.COLORS.gray, 'Regular', 30, 'center');
+  // === CTA (Y: 1230~1320) ===
+  roundRect(ctx, 40, 1230, W - 80, 90, 16, CFG.COLORS.orange);
+    fillText(ctx, '\uD83D\uDCE2 \uD154\uB808\uADF8\uB7A8\uC5D0\uC11C \uC2E4\uC2DC\uAC04 \uBE0C\uB9AC\uD551 \uBC1B\uAE30', W / 2, 1265, CFG.COLORS.white, 'Bold', 32, 'center');
+    fillText(ctx, '@coiniseasy \uAD6C\uB3C5\uD558\uAE30', W / 2, 1300, CFG.COLORS.yellow, 'Bold', 28, 'center');
 
-         // — CTA (Telegram subscription) —
-      roundRect(ctx, 40, H - 220, W - 80, 100, 16, CFG.COLORS.orange);
-      fillText(ctx, '📢 텔레그램에서 실시간 브리핑 받기', W / 2, H - 180, CFG.COLORS.white, 'Bold', 36, 'center');
-      fillText(ctx, '@coiniseasy 구독하기', W / 2, H - 140, CFG.COLORS.yellow, 'Bold', 32, 'center');
+  // === Footer text (Y: 1340) ===
+  const footerText = payload.session ? payload.session.footer : '\uB9E4\uC77C \uC544\uCE68 8\uC2DC';
+    fillText(ctx, `CoinEasy \u2022 ${footerText}`, W / 2, 1350, CFG.COLORS.gray, 'Regular', 26, 'center');
+
+  // === Korean Subtitle at bottom (Y: 1720~1820) ===
+  const subtitle = getSubtitleForTime(payload, t);
+    if (subtitle) {
+          // Semi-transparent black background for subtitle
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+          ctx.fillRect(20, 1700, W - 40, 100);
+
+      // Subtitle text - white, centered, large and readable
+      setFont(ctx, 'Bold', 36);
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+
+      // Word wrap if needed
+      const maxWidth = W - 80;
+          const measured = ctx.measureText(subtitle).width;
+          if (measured > maxWidth) {
+                  // Split into two lines
+            const mid = Math.ceil(subtitle.length / 2);
+                  let splitIdx = subtitle.lastIndexOf(' ', mid);
+                  if (splitIdx < 0) splitIdx = mid;
+                  const line1 = subtitle.slice(0, splitIdx).trim();
+                  const line2 = subtitle.slice(splitIdx).trim();
+                  ctx.fillText(line1, W / 2, 1738);
+                  ctx.fillText(line2, W / 2, 1778);
+          } else {
+                  ctx.fillText(subtitle, W / 2, 1760);
+          }
+    }
 
   ctx.globalAlpha = 1;
-  return canvas;
+    return canvas;
 }
 
-// ─── TTS generation ───────────────────────────────────────
-
-/**
- * Generate Korean TTS audio using edge-tts CLI.
- * Returns path to the generated MP3 file.
- */
+// --- TTS generation ---
 async function generateTTS(payload, outDir) {
-  const t = payload.texts;
-  const script = [
-    `코인이지 ${payload.session ? payload.session.greeting : '데일리 마켓 브리핑입니다'}.`,
-    `${t.date_label}.`,
-    `비트코인은 현재 ${t.btc_price}, ${t.btc_change}입니다.`,
-    `이더리움 ${t.eth_price} ${t.eth_change},`,
-    `솔라나 ${t.sol_price} ${t.sol_change}.`,
-    `공포탐욕지수는 ${t.fear_value}, ${t.fear_label} 구간입니다.`,
-    `김치 프리미엄은 ${t.kimchi_premium}.`,
-    `오늘의 인사이트: ${t.quote_line1}. ${t.quote_line2}.`,
-    `${payload.session ? payload.session.cta : '코인이지와 함께 오늘도 현명한 투자 하세요'}.`,
-          `코인이지 텔레그램 채널에서 매일 아침 저녁 실시간 브리핑을 받아보세요. @coiniseasy를 검색하고 구독해주세요.`,
-  ].join(' ');
+    const t = payload.texts;
+    const script = [
+          `\uCF54\uC778\uC774\uC9C0 ${payload.session ? payload.session.greeting : '\uB370\uC77C\uB9AC \uB9C8\uCF13 \uBE0C\uB9AC\uD551\uC785\uB2C8\uB2E4'}.`,
+          `${t.date_label}.`,
+          `\uBE44\uD2B8\uCF54\uC778\uC740 \uD604\uC7AC ${t.btc_price}, ${t.btc_change}\uC785\uB2C8\uB2E4.`,
+          `\uC774\uB354\uB9AC\uC6C0 ${t.eth_price} ${t.eth_change},`,
+          `\uC194\uB77C\uB098 ${t.sol_price} ${t.sol_change}.`,
+          `\uACF5\uD3EC\uD0D0\uC695\uC9C0\uC218\uB294 ${t.fear_value}, ${t.fear_label} \uAD6C\uAC04\uC785\uB2C8\uB2E4.`,
+          `\uAE40\uCE58 \uD504\uB9AC\uBBF8\uC5C4\uC740 ${t.kimchi_premium}.`,
+          `\uC624\uB298\uC758 \uC778\uC0AC\uC774\uD2B8: ${t.quote_line1}. ${t.quote_line2}.`,
+          `${payload.session ? payload.session.cta : '\uCF54\uC778\uC774\uC9C0\uC640 \uD568\uAED8 \uC624\uB298\uB3C4 \uD604\uBA85\uD55C \uD22C\uC790 \uD558\uC138\uC694'}.`,
+          `\uCF54\uC778\uC774\uC9C0 \uD154\uB808\uADF8\uB7A8 \uCC44\uB110\uC5D0\uC11C \uB9E4\uC77C \uC544\uCE68 \uC800\uB155 \uC2E4\uC2DC\uAC04 \uBE0C\uB9AC\uD551\uC744 \uBC1B\uC544\uBCF4\uC138\uC694. @coiniseasy\uB97C \uAC80\uC0C9\uD558\uACE0 \uAD6C\uB3C5\uD574\uC8FC\uC138\uC694.`,
+        ].join(' ');
 
   const audioPath = path.join(outDir, 'narration.mp3');
-
-  await new Promise((resolve, reject) => {
-    const proc = spawn('edge-tts', [
-      '--voice', CFG.TTS_VOICE,
-      '--rate', CFG.TTS_RATE,
-      '--volume', CFG.TTS_VOLUME,
-      '--text', script,
-      '--write-media', audioPath,
-    ]);
-
-    let stderr = '';
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve(audioPath);
-      } else {
-        reject(new Error(`edge-tts exited ${code}: ${stderr}`));
-      }
+    await new Promise((resolve, reject) => {
+          const proc = spawn('edge-tts', [
+                  '--voice', CFG.TTS_VOICE,
+                  '--rate', CFG.TTS_RATE,
+                  '--volume', CFG.TTS_VOLUME,
+                  '--text', script,
+                  '--write-media', audioPath,
+                ]);
+          let stderr = '';
+          proc.stderr.on('data', (d) => { stderr += d.toString(); });
+          proc.on('close', (code) => {
+                  if (code === 0) resolve(audioPath);
+                  else reject(new Error(`edge-tts exited ${code}: ${stderr}`));
+          });
+          proc.on('error', reject);
     });
-    proc.on('error', reject);
-  });
-
-  return audioPath;
+    return audioPath;
 }
 
-// ─── Frame sequence → video ───────────────────────────────
-
-/**
- * Render all frames to PNG files in outDir.
- * Returns the glob pattern for ffmpeg input.
- */
+// --- Frame sequence to video ---
 async function renderFrames(payload, outDir) {
-  const totalFrames = CFG.DURATION_SECONDS * CFG.FRAME_RATE;
-  const framesDir = path.join(outDir, 'frames');
-  fs.mkdirSync(framesDir, { recursive: true });
+    const totalFrames = CFG.DURATION_SECONDS * CFG.FRAME_RATE;
+    const framesDir = path.join(outDir, 'frames');
+    fs.mkdirSync(framesDir, { recursive: true });
 
   for (let i = 0; i < totalFrames; i++) {
-    const t = i / CFG.FRAME_RATE;
-    const canvas = renderFrame(payload, t);
-    const framePath = path.join(framesDir, `frame_${String(i).padStart(6, '0')}.png`);
-    const buf = canvas.toBuffer('image/png');
-    fs.writeFileSync(framePath, buf);
+        const t = i / CFG.FRAME_RATE;
+        const canvas = renderFrame(payload, t);
+        const framePath = path.join(framesDir, `frame_${String(i).padStart(6, '0')}.png`);
+        const buf = canvas.toBuffer('image/png');
+        fs.writeFileSync(framePath, buf);
   }
-
-  return path.join(framesDir, 'frame_%06d.png');
+    return path.join(framesDir, 'frame_%06d.png');
 }
 
-/**
- * Compose frames + audio into an MP4 using fluent-ffmpeg.
- * Returns path to the output MP4.
- */
 async function composeVideo(framePattern, audioPath, outDir) {
-  const outputPath = path.join(outDir, `coineasy_short_${Date.now()}.mp4`);
+    const outputPath = path.join(outDir, `coineasy_short_${Date.now()}.mp4`);
 
   await new Promise((resolve, reject) => {
-    let cmd = ffmpeg()
-      .input(framePattern)
-      .inputOptions([
-        `-framerate ${CFG.FRAME_RATE}`,
-        '-f image2',
-      ]);
+        let cmd = ffmpeg()
+          .input(framePattern)
+          .inputOptions([
+                    `-framerate ${CFG.FRAME_RATE}`,
+                    '-f image2',
+                  ]);
 
-    if (audioPath && fs.existsSync(audioPath)) {
-      cmd = cmd.input(audioPath);
-    }
+                        if (audioPath && fs.existsSync(audioPath)) {
+                                cmd = cmd.input(audioPath);
+                        }
 
-    cmd
-      .outputOptions([
-        `-c:v ${CFG.VIDEO_CODEC}`,
-        `-preset ${CFG.PRESET}`,
-        `-crf ${CFG.CRF}`,
-        `-b:v ${CFG.VIDEO_BITRATE}`,
-        `-pix_fmt ${CFG.PIXEL_FORMAT}`,
-        `-c:a ${CFG.AUDIO_CODEC}`,
-        `-b:a ${CFG.AUDIO_BITRATE}`,
-        '-shortest',
-        '-movflags +faststart',
-      ])
-      .output(outputPath)
-      .on('end', () => resolve(outputPath))
-      .on('error', (err) => reject(new Error(`ffmpeg error: ${err.message}`)))
-      .run();
+                        cmd
+          .outputOptions([
+                    `-c:v ${CFG.VIDEO_CODEC}`,
+                    `-preset ${CFG.PRESET}`,
+                    `-crf ${CFG.CRF}`,
+                    `-b:v ${CFG.VIDEO_BITRATE}`,
+                    `-pix_fmt ${CFG.PIXEL_FORMAT}`,
+                    `-c:a ${CFG.AUDIO_CODEC}`,
+                    `-b:a ${CFG.AUDIO_BITRATE}`,
+                    '-shortest',
+                    '-movflags +faststart',
+                  ])
+          .output(outputPath)
+          .on('end', () => resolve(outputPath))
+          .on('error', (err) => reject(new Error(`ffmpeg error: ${err.message}`)))
+          .run();
   });
-
-  return outputPath;
+    return outputPath;
 }
 
-// ─── Public API ───────────────────────────────────────────
-
-/**
- * Generate a YouTube Short MP4 from the given market payload.
- *
- * @param {object} payload  - market payload from figmaDataBuilder.buildPayload()
- * @returns {Promise<string>} path to the generated MP4 file
- */
+// --- Public API ---
 async function generateYouTubeShort(payload) {
-  // Ensure output directory exists
-  fs.mkdirSync(CFG.OUTPUT_DIR, { recursive: true });
-
-  const workDir = fs.mkdtempSync(path.join(CFG.OUTPUT_DIR, 'job-'));
-  console.log(`  [generator] 작업 디렉토리: ${workDir}`);
+    fs.mkdirSync(CFG.OUTPUT_DIR, { recursive: true });
+    const workDir = fs.mkdtempSync(path.join(CFG.OUTPUT_DIR, 'job-'));
+    console.log(`  [generator] 작업 디렉토리: ${workDir}`);
 
   try {
-    // 1) Render frames
-    console.log(`  [generator] 프레임 렌더링 중 (${CFG.DURATION_SECONDS * CFG.FRAME_RATE}장)…`);
-    const framePattern = await renderFrames(payload, workDir);
-    console.log('  [generator] 프레임 렌더링 완료');
+        console.log(`  [generator] 프레임 렌더링 중 (${CFG.DURATION_SECONDS * CFG.FRAME_RATE}장)...`);
+        const framePattern = await renderFrames(payload, workDir);
+        console.log('  [generator] 프레임 렌더링 완료');
 
-    // 2) Generate TTS narration
-    let audioPath = null;
-    try {
-      console.log('  [generator] TTS 나레이션 생성 중…');
-      audioPath = await generateTTS(payload, workDir);
-      console.log(`  [generator] TTS 완료: ${audioPath}`);
-    } catch (ttsErr) {
-      console.warn(`  [generator] TTS 실패 (무음으로 진행): ${ttsErr.message}`);
-    }
+      let audioPath = null;
+        try {
+                console.log('  [generator] TTS 나레이션 생성 중...');
+                audioPath = await generateTTS(payload, workDir);
+                console.log(`  [generator] TTS 완료: ${audioPath}`);
+        } catch (ttsErr) {
+                console.warn(`  [generator] TTS 실패 (무음으로 진행): ${ttsErr.message}`);
+        }
 
-    // 3) Compose video
-    console.log('  [generator] 영상 합성 중…');
-    const videoPath = await composeVideo(framePattern, audioPath, workDir);
-    console.log(`  [generator] 영상 합성 완료: ${videoPath}`);
+      console.log('  [generator] 영상 합성 중...');
+        const videoPath = await composeVideo(framePattern, audioPath, workDir);
+        console.log(`  [generator] 영상 합성 완료: ${videoPath}`);
 
-    return videoPath;
-
+      return videoPath;
   } catch (err) {
-    // Clean up work directory on failure
-    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (_) {}
-    throw err;
+        try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (_) {}
+        throw err;
   }
 }
 
@@ -340,15 +345,15 @@ module.exports = { generateYouTubeShort };
 
 // CLI test
 if (require.main === module) {
-  const { buildPayload } = require('./figma-daily/figmaDataBuilder');
-  buildPayload()
-    .then((payload) => generateYouTubeShort(payload))
-    .then((p) => {
-      console.log(`\n✅ 영상 생성 완료: ${p}`);
-      process.exit(0);
-    })
-    .catch((e) => {
-      console.error(e);
-      process.exit(1);
-    });
+    const { buildPayload } = require('./figma-daily/figmaDataBuilder');
+    buildPayload()
+      .then((payload) => generateYouTubeShort(payload))
+      .then((p) => {
+              console.log(`\n\u2705 영상 생성 완료: ${p}`);
+              process.exit(0);
+      })
+      .catch((e) => {
+              console.error(e);
+              process.exit(1);
+      });
 }
