@@ -179,3 +179,11 @@ console.log('Job 2 (Shorts AM)   : daily UTC 23:05 (KST 08:05)');
 console.log('Job 3 (Briefing PM) : daily UTC 09:00 (KST 18:00)');
 console.log('Job 4 (Shorts PM)   : daily UTC 09:05 (KST 18:05)');
 console.log('');
+
+// ─── 수동 실행 (1회성) ─────────────────────────────────
+(async () => {
+    console.log('🚀 수동 YouTube Shorts 업로드 시작...');
+    const session = { type: 'morning', label: '아침', greeting: '좋은 아침입니다' };
+    const result = await runYouTubeShorts(session);
+    console.log('수동 업로드 결과:', JSON.stringify(result));
+})();
