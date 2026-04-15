@@ -75,16 +75,18 @@ function getSubtitleForTime(payload, t) {
     const txt = payload.texts;
     // Each subtitle shown for a portion of the video duration
   const segments = [
-    { start: 0,  end: 4,  text: `${txt.date_label} 코인이지 마켓 브리핑` },
-    { start: 4,  end: 8,  text: `비트코인 ${txt.btc_price} (${txt.btc_change})` },
-    { start: 8,  end: 12, text: `이더리움 ${txt.eth_price} (${txt.eth_change})` },
-    { start: 12, end: 16, text: `솔라나 ${txt.sol_price} (${txt.sol_change})` },
-    { start: 16, end: 20, text: `공포탐욕지수 ${txt.fear_value} (${txt.fear_label})` },
-    { start: 20, end: 24, text: `김치 프리미엄 ${txt.kimchi_premium}` },
-    { start: 24, end: 30, text: `"${txt.quote_line1}"` },
-    { start: 30, end: 34, text: txt.quote_line2 },
-    { start: 34, end: 38, text: '코인이지 텔레그램 구독하세요!' },
-      ];
+      { start: 0, end: 3, text: `${txt.date_label} 코인이지 마켓 브리핑` },
+    `비티씨 이티에프 자금 흐름은 ${t.btc_etf_total || '데이터 없음'} ${t.btc_etf_direction || ''}, 이더리움 이티에프는 ${t.eth_etf_total || '데이터 없음'} ${t.eth_etf_direction || ''}입니다.`,
+      { start: 3, end: 7, text: `비트코인 ${txt.btc_price} (${txt.btc_change})` },
+      { start: 7, end: 10, text: `이더리움 ${txt.eth_price} (${txt.eth_change})` },
+      { start: 10, end: 13, text: `솔라나 ${txt.sol_price} (${txt.sol_change})` },
+      { start: 13, end: 17, text: `BTC ETF ${txt.btc_etf_total || 'N/A'} | ETH ETF ${txt.eth_etf_total || 'N/A'}` },
+      { start: 17, end: 20, text: `공포탐욕지수 ${txt.fear_value} (${txt.fear_label})` },
+      { start: 20, end: 23, text: `김치 프리미엄 ${txt.kimchi_premium}` },
+      { start: 23, end: 28, text: `"${txt.quote_line1}"` },
+      { start: 28, end: 32, text: txt.quote_line2 },
+      { start: 32, end: 38, text: '코인이지 텔레그램 구독하세요!' },
+    ]
     for (const seg of segments) {
           if (t >= seg.start && t < seg.end) return seg.text;
     }
@@ -153,15 +155,32 @@ function renderFrame(payload, t) {
           fillText(ctx, coin.change, cx + (colW - 5) / 2, altY + 112, coin.color || CFG.COLORS.gray, 'Regular', 24, 'center');
     });
 
+  // === ETF Flow Card (Y: 600~730) ===
+  const etfY = 600;
+  roundRect(ctx, 40, etfY, W - 80, 130, 20, CFG.COLORS.bgCard);
+  fillText(ctx, '📈 ETF 자금 흐름', 80, etfY + 40, CFG.COLORS.orange, 'Bold', 32);
+  
+  const btcEtfColor = colors.btc_etf_total || CFG.COLORS.gray;
+  const ethEtfColor = colors.eth_etf_total || CFG.COLORS.gray;
+  fillText(ctx, `BTC ETF: ${texts.btc_etf_total || 'N/A'}`, 80, etfY + 85, btcEtfColor, 'Bold', 30);
+  fillText(ctx, `(${texts.btc_etf_direction || ''})`, 380, etfY + 85, btcEtfColor, 'Regular', 24);
+  fillText(ctx, `ETH ETF: ${texts.eth_etf_total || 'N/A'}`, 560, etfY + 85, ethEtfColor, 'Bold', 30);
+  fillText(ctx, `(${texts.eth_etf_direction || ''})`, 830, etfY + 85, ethEtfColor, 'Regular', 24);
+  
+  // ETF note
+  if (texts.etf_note) {
+    fillText(ctx, texts.etf_note, W / 2, etfY + 118, CFG.COLORS.gray, 'Regular', 22, 'center');
+  }
+
   // === Fear & Greed + Kimchi (Y: 600~740) ===
-  const fgY = 600;
+  const fgY = 750;
     roundRect(ctx, 40, fgY, W - 80, 140, 20, CFG.COLORS.bgCard);
     fillText(ctx, '\uD83D\uDE28 \uACF5\uD3EC\uD0D0\uC695\uC9C0\uC218', 80, fgY + 45, CFG.COLORS.cream, 'Bold', 32);
     fillText(ctx, `${texts.fear_value} (${texts.fear_label})`, 80, fgY + 100, CFG.COLORS.white, 'Black', 42);
     fillText(ctx, `\uD83E\uDD6C \uAE40\uD504 ${texts.kimchi_premium}`, W - 80, fgY + 72, CFG.COLORS.yellow, 'Bold', 32, 'right');
 
   // === Trending (Y: 760~1020) ===
-  const trendY = 760;
+  const trendY = 910;
     fillText(ctx, '\uD83D\uDE80 \uD2B8\uB80C\uB529', 80, trendY, CFG.COLORS.orange, 'Bold', 36);
     const trends = [
       { name: texts.trend_1_name, change: texts.trend_1_change, color: colors.trend_1_change },
@@ -176,19 +195,19 @@ function renderFrame(payload, t) {
     });
 
   // === Quote (Y: 1040~1200) ===
-  const quoteY = 1040;
+  const quoteY = 1150;
     roundRect(ctx, 40, quoteY, W - 80, 160, 20, CFG.COLORS.bgCard);
     fillText(ctx, `\u201C${texts.quote_line1}\u201D`, W / 2, quoteY + 60, CFG.COLORS.cream, 'Medium', 30, 'center');
     fillText(ctx, texts.quote_line2, W / 2, quoteY + 115, CFG.COLORS.gray, 'Regular', 26, 'center');
 
   // === CTA (Y: 1230~1320) ===
-  roundRect(ctx, 40, 1230, W - 80, 90, 16, CFG.COLORS.orange);
-    fillText(ctx, '\uD83D\uDCE2 \uD154\uB808\uADF8\uB7A8\uC5D0\uC11C \uC2E4\uC2DC\uAC04 \uBE0C\uB9AC\uD551 \uBC1B\uAE30', W / 2, 1265, CFG.COLORS.white, 'Bold', 32, 'center');
-    fillText(ctx, '@coiniseasy \uAD6C\uB3C5\uD558\uAE30', W / 2, 1300, CFG.COLORS.yellow, 'Bold', 28, 'center');
+  roundRect(ctx, 40, 1340, W - 80, 90, 16, CFG.COLORS.orange);
+    fillText(ctx, '\uD83D\uDCE2 \uD154\uB808\uADF8\uB7A8\uC5D0\uC11C \uC2E4\uC2DC\uAC04 \uBE0C\uB9AC\uD551 \uBC1B\uAE30', W / 2, 1375, CFG.COLORS.white, 'Bold', 32, 'center');
+    fillText(ctx, '@coiniseasy \uAD6C\uB3C5\uD558\uAE30', W / 2, 1410, CFG.COLORS.yellow, 'Bold', 28, 'center');
 
   // === Footer text (Y: 1340) ===
   const footerText = payload.session ? payload.session.footer : '\uB9E4\uC77C \uC544\uCE68 8\uC2DC';
-    fillText(ctx, `CoinEasy \u2022 ${footerText}`, W / 2, 1350, CFG.COLORS.gray, 'Regular', 26, 'center');
+    fillText(ctx, `CoinEasy \u2022 ${footerText}`, W / 2, 1460, CFG.COLORS.gray, 'Regular', 26, 'center');
 
   // === Korean Subtitle at bottom (Y: 1720~1820) ===
   const subtitle = getSubtitleForTime(payload, t);
