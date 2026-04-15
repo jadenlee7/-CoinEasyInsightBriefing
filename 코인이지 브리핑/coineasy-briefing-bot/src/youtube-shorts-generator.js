@@ -13,7 +13,7 @@
 //   - Korean subtitles rendered at bottom of video
 //   - All text in Korean
 
-'use strict';
+// ESM mode
 
 const fs      = require('fs');
 const path    = require('path');
@@ -341,19 +341,8 @@ async function generateYouTubeShort(payload) {
   }
 }
 
-module.exports = { generateYouTubeShort };
+export { generateYouTubeShort };
 
 // CLI test
 if (require.main === module) {
-    const { buildPayload } = require('./figma-daily/figmaDataBuilder');
-    buildPayload()
-      .then((payload) => generateYouTubeShort(payload))
-      .then((p) => {
-              console.log(`\n\u2705 영상 생성 완료: ${p}`);
-              process.exit(0);
-      })
-      .catch((e) => {
-              console.error(e);
-              process.exit(1);
-      });
-}
+    export { generateYouTubeShort };
