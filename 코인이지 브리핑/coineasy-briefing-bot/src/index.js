@@ -38,7 +38,8 @@ function markdownToHtml(text) {
 }
 
 function buildFooter() {
-  return '\n\n#이지브리핑';
+  // footer는 generator.js에서 처리 (링크 + 해시태그)
+  return '';
 }
 // ─── 메인 브리핑 파이프라인 ────────────────────────────
 async function runBriefingPipeline() {
