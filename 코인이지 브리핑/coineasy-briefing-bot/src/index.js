@@ -14,6 +14,8 @@
 'use strict';
 
 const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
 
 const { runDailyFigma }       = require('./figma-daily/runDailyFigma');
 const { buildPayload }        = require('./figma-daily/figmaDataBuilder');
@@ -96,7 +98,25 @@ async function runSocialPosting(session) {
 
       console.log(`[${new Date().toISOString()}] 📱 소셜 포스팅 시작 (${session.label})...`);
 
-      const result = await postBriefingToSocial(briefingText);
+      // 배너 이미지 로드 (Figma 배너가 이미 생성된 경우)
+      let bannerBuffer = null;
+      try {
+          const bannersDir = path.join(__dirname, '..', 'banners');
+          if (fs.existsSync(bannersDir)) {
+              const files = fs.readdirSync(bannersDir)
+                  .filter(f => f.endsWith('.png'))
+                  .sort()
+                  .reverse();
+              if (files.length > 0) {
+                  bannerBuffer = fs.readFileSync(path.join(bannersDir, files[0]));
+                  console.log(`[${new Date().toISOString()}] 🖼️ 배너 로드 완료: ${files[0]} (${bannerBuffer.length} bytes)`);
+              }
+          }
+      } catch (bannerErr) {
+          console.warn(`[${new Date().toISOString()}] ⚠️ 배너 로드 실패 — 텍스트만 포스팅:`, bannerErr.message);
+      }
+
+      const result = await postBriefingToSocial(briefingText, bannerBuffer);
 
       if (result.success) {
               console.log(`[${new Date().toISOString()}] ✅ 소셜 포스팅 완료 (X, LinkedIn, Threads)`);
