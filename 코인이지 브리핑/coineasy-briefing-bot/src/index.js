@@ -121,7 +121,7 @@ async function runBriefingPipeline() {
 async function runYouTubeShorts(session) {
   try {
     const { generateYouTubeShort } = await import('./youtube-shorts-generator.js');
-    const { uploadToYouTube, cleanupVideo } = await import('./youtube-uploader.js');
+    const { uploadToYouTube, cleanupVideo } = await import('./youtube-uploader-new.js');
     const { buildPayload } = await import('./figma-daily/figmaDataBuilder.js');
 
     const startTs = new Date();
