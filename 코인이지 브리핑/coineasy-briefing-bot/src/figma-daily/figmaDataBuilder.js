@@ -142,6 +142,85 @@ async function fetchDefiHot() {
         }
 }
 
+async function fetchETFFlow() {
+  try {
+    // Fetch BTC ETF flow from Farside Investors
+    const btcRes = await fetch('https://farside.co.uk/bitcoin-etf-flow-all-data/', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoinEasyBot/1.0)' },
+      signal: AbortSignal.timeout(15000)
+    });
+    const btcHtml = await btcRes.text();
+    
+    // Parse the HTML table
+    const parseETFTable = (html) => {
+      const rows = html.match(/<tr[^>]*>.*?<\/tr>/gs) || [];
+      let lastValidRow = null;
+      let prevRow = null;
+      
+      for (const row of rows) {
+        const cells = row.match(/<td[^>]*>(.*?)<\/td>/g) || [];
+        if (cells.length < 3) continue;
+        
+        const firstCell = cells[0].replace(/<[^>]*>/g, '').trim();
+        // Check if first cell is a date (dd Mon yyyy pattern)
+        if (/^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i.test(firstCell)) {
+          const lastCell = cells[cells.length - 1].replace(/<[^>]*>/g, '').trim();
+          if (lastCell && lastCell !== '-' && lastCell !== '') {
+            prevRow = lastValidRow;
+            lastValidRow = { date: firstCell, cells };
+          }
+        }
+      }
+      
+      if (!lastValidRow) return null;
+      
+      const parseVal = (str) => {
+        const clean = str.replace(/<[^>]*>/g, '').trim();
+        if (!clean || clean === '-') return 0;
+        // Handle parentheses for negative: (123.4) → -123.4
+        const negMatch = clean.match(/\(([\d.]+)\)/);
+        if (negMatch) return -parseFloat(negMatch[1]);
+        return parseFloat(clean.replace(/,/g, '')) || 0;
+      };
+      
+      const cellValues = lastValidRow.cells.map(c => c.replace(/<[^>]*>/g, '').trim());
+      const total = parseVal(lastValidRow.cells[lastValidRow.cells.length - 1].replace(/<[^>]*>/g, ''));
+      
+      let prevTotal = null;
+      if (prevRow) {
+        prevTotal = parseVal(prevRow.cells[prevRow.cells.length - 1].replace(/<[^>]*>/g, ''));
+      }
+      
+      return {
+        date: lastValidRow.date,
+        totalFlow: total,
+        previousDayTotal: prevTotal,
+        flowDirection: total > 0 ? '순유입' : total < 0 ? '순유출' : '보합'
+      };
+    };
+    
+    const btcETF = parseETFTable(btcHtml);
+    
+    // Fetch ETH ETF flow
+    let ethETF = null;
+    try {
+      const ethRes = await fetch('https://farside.co.uk/ethereum-etf-flow-all-data/', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoinEasyBot/1.0)' },
+        signal: AbortSignal.timeout(15000)
+      });
+      const ethHtml = await ethRes.text();
+      ethETF = parseETFTable(ethHtml);
+    } catch (e) {
+      console.warn('[etf] ETH ETF fetch error:', e.message);
+    }
+    
+    return { btc: btcETF, eth: ethETF };
+  } catch (e) {
+    console.warn('[etf] ETF flow fetch error:', e.message);
+    return { btc: null, eth: null };
+  }
+}
+
 async function fetchTrending() {
         const cmcKey = process.env.CMC_API_KEY;
         if (!cmcKey) {
@@ -311,6 +390,9 @@ async function buildPayload(now = new Date(), session = null) {
 
     // CMC trending (non-CoinGecko, safe to call)
     const trending = await fetchTrending();
+  
+  // ETF flow data
+  const etfData = await fetchETFFlow();
 
     while (defi.length < 3)
                 defi.push({ name: '—', tvl_usd: 0, change_24h: 0 });
@@ -368,6 +450,13 @@ async function buildPayload(now = new Date(), session = null) {
                 trend_3_change: fmtPct(trending[2].change_24h),
                 quote_line1: quote.line1,
                 quote_line2: quote.line2,
+
+    // ETF flow data
+    btc_etf_total: etfData.btc ? `${etfData.btc.totalFlow > 0 ? '+' : ''}${etfData.btc.totalFlow.toFixed(1)}M` : 'N/A',
+    btc_etf_direction: etfData.btc ? etfData.btc.flowDirection : 'N/A',
+    eth_etf_total: etfData.eth ? `${etfData.eth.totalFlow > 0 ? '+' : ''}${etfData.eth.totalFlow.toFixed(1)}M` : 'N/A',
+    eth_etf_direction: etfData.eth ? etfData.eth.flowDirection : 'N/A',
+    etf_note: etfData.btc ? (etfData.btc.totalFlow > 50 ? '기관 대규모 유입 — 상승 모멘텀 주시' : etfData.btc.totalFlow < -50 ? '기관 자금 유출 — 리스크 관리 점검' : etfData.btc.totalFlow > 0 ? '기관 순유입 지속 — 긍정적 신호' : etfData.btc.totalFlow < 0 ? '기관 순유출 — 단기 조정 가능성' : '기관 자금 보합 — 추세 확인 필요') : 'ETF 데이터 수집 실패',
     };
 
     // Color map (green/red based on sign)
@@ -390,6 +479,14 @@ async function buildPayload(now = new Date(), session = null) {
                     const v = parseFloat(texts[k].replace('%', '').replace('+', ''));
                     colors[k] = v >= 0 ? '#00b009' : '#ff1f1f';
         }
+  
+  // ETF flow colors
+  if (etfData.btc) {
+    colors.btc_etf_total = etfData.btc.totalFlow >= 0 ? '#00b009' : '#ff1f1f';
+  }
+  if (etfData.eth) {
+    colors.eth_etf_total = etfData.eth.totalFlow >= 0 ? '#00b009' : '#ff1f1f';
+  }
 
     return {
                 frame_id: '28334:14', session: session || { type: 'morning', label: '아침', footer: '매일 아침 8시', cta: '오늘 하루도 현명한 투자 하세요' },
@@ -409,4 +506,5 @@ export {
         fetchDefiHot,
         fetchTrending,
         generateQuote,
+  fetchETFFlow,
 };
