@@ -179,3 +179,19 @@ console.log('Job 2 (Shorts AM)   : daily UTC 23:05 (KST 08:05)');
 console.log('Job 3 (Briefing PM) : daily UTC 09:00 (KST 18:00)');
 console.log('Job 4 (Shorts PM)   : daily UTC 09:05 (KST 18:05)');
 console.log('');
+
+// ─── One-time manual trigger (remove after testing) ─────
+(async () => {
+  console.log('\n🔥 [수동 트리거] 즉시 실행 시작!');
+  
+  // 1. Briefing pipeline
+  console.log('\n📡 브리핑 파이프라인 실행...');
+  await runBriefingPipeline();
+  
+  // 2. YouTube Shorts pipeline
+  console.log('\n🎬 YouTube Shorts 파이프라인 실행...');
+  const session = getSession(new Date());
+  await runYouTubeShorts(session);
+  
+  console.log('\n✅ [수동 트리거] 완료!');
+})();
