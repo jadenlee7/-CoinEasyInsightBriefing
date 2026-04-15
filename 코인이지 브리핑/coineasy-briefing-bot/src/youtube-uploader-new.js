@@ -62,7 +62,7 @@ function buildVideoMetadata(payload, now = new Date()) {
           `Ξ ETH: ${t.eth_price} (${t.eth_change})`,
           `◎ SOL: ${t.sol_price} (${t.sol_change})`,
           '',
-          `😨 공포탐욕지수: ${t.fear_value} (${t.fear_label})`,
+          `😨 공포탐욕지수: ${t.fear_value} (${{'Extreme Fear':'극단적 공포','Fear':'공포','Neutral':'중립','Greed':'탐욕','Extreme Greed':'극단적 탐욕'}[t.fear_label]||t.fear_label})`,
           `🥬 김치 프리미엄: ${t.kimchi_premium}`,
           '',
           `💬 "${t.quote_line1}"`,
@@ -156,24 +156,3 @@ function cleanupVideo(videoPath) {
 }
 
 export { uploadToYouTube, cleanupVideo };
-
-// CLI test
-if (require.main === module) {
-    const testVideoPath = process.argv[2];
-    if (!testVideoPath) {
-          console.error('Usage: node youtube-uploader.js <path-to-video.mp4>');
-          process.exit(1);
-    }
-
-  const { buildPayload } = require('./figma-daily/figmaDataBuilder');
-    buildPayload()
-      .then((payload) => uploadToYouTube(testVideoPath, payload))
-      .then((url) => {
-              console.log(`\n✅ 업로드 완료: ${url}`);
-              process.exit(0);
-      })
-      .catch((e) => {
-              console.error(e);
-              process.exit(1);
-      });
-}
