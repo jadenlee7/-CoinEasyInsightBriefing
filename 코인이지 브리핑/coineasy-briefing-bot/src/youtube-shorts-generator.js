@@ -15,15 +15,15 @@
 
 // ESM mode
 
-const fs      = require('fs');
-const path    = require('path');
-const os      = require('os');
-const { execFile, spawn } = require('child_process');
-const { promisify }       = require('util');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
 const execFileAsync       = promisify(execFile);
-const { createCanvas, registerFont } = require('canvas');
-const ffmpeg  = require('fluent-ffmpeg');
-const CFG     = require('./youtube-shorts-config');
+import { createCanvas, registerFont } from 'canvas';
+import ffmpeg from 'fluent-ffmpeg';
+import * as CFG from './youtube-shorts-config.js';
 
 // --- Font setup ---
 const FONT_FAMILY = 'Noto Sans CJK KR';
@@ -342,7 +342,3 @@ async function generateYouTubeShort(payload) {
 }
 
 export { generateYouTubeShort };
-
-// CLI test
-if (require.main === module) {
-    export { generateYouTubeShort };
