@@ -4,7 +4,7 @@
 // All video parameters are centralised here so they can be tuned
 // without touching the generator or uploader logic.
 
-'use strict';
+// ESM mode (no 'use strict' needed)
 
 // ─── Video dimensions (9:16 vertical) ───────────────────
 const VIDEO_WIDTH  = 1080;
@@ -64,7 +64,7 @@ const YT_CATEGORY_ID = '27';   // News & Politics (Finance is not a standalone c
 const YT_LANGUAGE    = 'ko';
 const YT_PRIVACY     = process.env.YT_PRIVACY_STATUS || 'public';
 
-module.exports = {
+export {
   VIDEO_WIDTH,
   VIDEO_HEIGHT,
   DURATION_SECONDS,
