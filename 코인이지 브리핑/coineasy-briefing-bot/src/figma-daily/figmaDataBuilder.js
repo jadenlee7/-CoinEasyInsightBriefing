@@ -13,7 +13,7 @@
 //
 // 외부 의존성: none (Node 18+ native fetch 사용)
 
-'use strict';
+// ESM mode
 
 const COIN_IDS = {
         BTC: 'bitcoin',
@@ -400,7 +400,7 @@ async function buildPayload(now = new Date(), session = null) {
     };
 }
 
-module.exports = {
+export {
         buildPayload,
         // exported for testing/reuse
         fetchPricesCoingecko,
@@ -410,13 +410,3 @@ module.exports = {
         fetchTrending,
         generateQuote,
 };
-
-// CLI test
-if (require.main === module) {
-        buildPayload()
-            .then((p) => console.log(JSON.stringify(p, null, 2)))
-            .catch((e) => {
-                            console.error(e);
-                            process.exit(1);
-            });
-}
