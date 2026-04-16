@@ -54,6 +54,7 @@ const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 공식 데
 - 김치 프리미엄은 한국 투자자에게 매우 중요한 지표이므로 반드시 멘션
 - 액션 아이템은 "~해보기", "~확인하기", "~점검하기" 형태로 부담 없이
 - **절대 금지**: 텔레그램 URL, X URL, 채팅방/공지방/소통방 링크, 해시태그, ## 마크다운 헤더 추가 금지 (코드가 자동으로 footer 붙임)
+- **트렌딩 코인**: 데이터에 주어진 TOP 3 코인만 그 순서 그대로 사용할 것. 다른 코인을 임의로 추가하거나 순서를 바꾸면 안됨
 - 마지막 줄은 반드시 "코인이지와 함께 오늘도 이지하게! 🫡"로 끝낼 것 (그 이후 아무것도 추가 금지)`;
 
 
@@ -167,9 +168,9 @@ ${data.defi.topLosers?.map(p => `${p.name}: ${p.tvl} | ${p.change1d}%`).join('\n
 === 체인별 TVL ===
 ${data.chains ? data.chains.map(c => `${c.name}: ${c.tvl}`).join('\n') : '데이터 없음'}
 
-=== 트렌딩 코인 (CoinGecko) ===
-${data.trending ? data.trending.map(c =>
-    `${c.symbol} (${c.name}) - 시총순위: #${c.marketCapRank} | 24h: ${c.priceChange24h}%`
+=== 트렌딩 코인 TOP 3 (CoinGecko) — 반드시 이 3개만 이 순서 그대로 사용할 것 ===
+${data.trending ? data.trending.slice(0, 3).map((c, i) =>
+    `${i + 1}. ${c.symbol} (${c.name}) - 시총순위: #${c.marketCapRank} | 24h: ${c.priceChange24h}%`
   ).join('\n') : '데이터 없음'}
 `;
 
