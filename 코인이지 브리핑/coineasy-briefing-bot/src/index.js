@@ -33,6 +33,8 @@ function getSession(now) {
 // ─── Markdown → HTML 변환 ──────────────────────────────
 function markdownToHtml(text) {
   return text
+    // [text](url) → <a href="url">text</a> (hyperlink)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
     .replace(/\*([^*]+)\*/g, '<b>$1</b>')
     .replace(/_([^_]+)_/g, '<i>$1</i>')
     .replace(/`([^`]+)`/g, '<code>$1</code>');

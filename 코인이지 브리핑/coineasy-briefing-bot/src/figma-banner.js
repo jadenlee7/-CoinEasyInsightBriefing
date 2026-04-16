@@ -549,7 +549,12 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
            }
 
            function stripMarkdown(text) {
-                        return text.replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/`([^`]+)`/g, '$1');
+                        // [text](url) → text (url)  (keeps URL visible when Markdown fails)
+                        return text
+                                       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+                                       .replace(/\*([^*]+)\*/g, '$1')
+                                       .replace(/_([^_]+)_/g, '$1')
+                                       .replace(/`([^`]+)`/g, '$1');
            }
 
            try {
