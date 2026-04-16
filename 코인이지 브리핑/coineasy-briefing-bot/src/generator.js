@@ -190,7 +190,7 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
     const text = response.content[0]?.text || '';
     // 푸터: 공지방/소통방/X 링크 + 해시태그
     const footer = '\n\n' +
-      '📢 [공지방](https://t.me/coiniseasy) | 💬 [소통방](https://t.me/coineasy_official) | 🐦 [X](https://x.com/Coiniseasy)\n\n' +
+      '📢 [공지방](<https://t.me/coiniseasy>) | 💬 [소통방](<https://t.me/coineasy_official>) | 🐦 [X](<https://x.com/Coiniseasy>)\n\n' +
       '#이지에드 #EasyEd #CoinEasy #이지브리핑';
     const withFooter = text + footer;
     console.log(`[브리핑 생성] 텔레그램 완료 (${withFooter.length}자)`);
