@@ -9,6 +9,10 @@
  *  - Farside Investors: BTC/ETH Spot ETF 유입/유출 데이터
  */
 
+import Redis from 'ioredis';
+
+const REDIS_URL = process.env.REDIS_URL || '';
+
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const DEFILLAMA_BASE = 'https://api.llama.fi';
 const CMC_API_KEY = process.env.CMC_API_KEY || '';
@@ -259,196 +263,79 @@ async function fetchKimchiPremium() {
 }
 
 // ============================================================
-// 8. ETF 유입/유출 데이터 (Farside Investors 스크래핑)
+// 8. ETF 유입/유출 데이터 (Redis 캐시 from coineasydaily)
 // ============================================================
 
-function parseETFValue(text) {
-        if (!text || text === '-' || text.trim() === '') return null;
-        const cleaned = text.replace(/,/g, '').replace(/\s/g, '').trim();
-        if (cleaned === '-' || cleaned === '') return null;
-        const match = cleaned.match(/^\(?([\d.]+)\)?$/);
-        if (!match) return null;
-        const val = parseFloat(match[1]);
-        return cleaned.startsWith('(') ? -val : val;
-}
-
-function parseETFTableRow(row) {
-        // Parse a row from the Farside HTML table
-    // Each cell: date, IBIT, FBTC, BITB, ARKB, BTCO, EZBC, BRRR, HODL, BTCW, GBTC, BTC, Total
-    const cells = row.match(/<td[^>]*>(.*?)<\/td>/gi);
-        if (!cells || cells.length < 3) return null;
-        const values = cells.map(c => c.replace(/<[^>]*>/g, '').trim());
-        return values;
-}
-
-async function fetchBTCETFFlow() {
-        try {
-                    const html = await fetchHTML('https://farside.co.uk/bitcoin-etf-flow-all-data/', 'Farside BTC ETF');
-                    if (!html) return null;
-
-            // Parse the table rows
-            const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-                    const rows = [];
-                    let match;
-                    while ((match = rowRegex.exec(html)) !== null) {
-                                    rows.push(match[1]);
-                    }
-
-            // Find data rows (rows with dates)
-            const dataRows = [];
-                    for (const row of rows) {
-                                    const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
-                                    if (!cells || cells.length < 5) continue;
-                                    const firstCell = cells[0].replace(/<[^>]*>/g, '').trim();
-                                    // Check if first cell looks like a date
-                        if (/\d{2}\s\w{3}\s\d{4}/.test(firstCell)) {
-                                            const values = cells.map(c => c.replace(/<[^>]*>/g, '').trim());
-                                            dataRows.push(values);
-                        }
-                    }
-
-            if (dataRows.length === 0) return null;
-
-            // Get latest 2 rows with actual data (non-zero total)
-            const validRows = dataRows.filter(r => {
-                            const total = parseETFValue(r[r.length - 1]);
-                            return total !== null;
-            });
-
-            const latestRows = validRows.slice(-3);
-
-            // Parse the latest row
-            const latest = latestRows[latestRows.length - 1];
-                    if (!latest) return null;
-
-            const date = latest[0];
-                    const totalFlow = parseETFValue(latest[latest.length - 1]);
-
-            // ETF names mapping (column positions may vary but generally):
-            // IBIT(1), FBTC(2), BITB(3), ARKB(4), BTCO(5), EZBC(6), BRRR(7), HODL(8), BTCW(9), GBTC(10 or 11), Total(last)
-            const etfNames = ['IBIT', 'FBTC', 'BITB', 'ARKB', 'BTCO', 'EZBC', 'BRRR', 'HODL', 'BTCW', 'MSBT', 'GBTC', 'BTC'];
-                    const etfFlows = [];
-                    for (let i = 1; i < latest.length - 1 && i - 1 < etfNames.length; i++) {
-                                    const val = parseETFValue(latest[i]);
-                                    if (val !== null) {
-                                                        etfFlows.push({ name: etfNames[i - 1], flow: val });
-                                    }
-                    }
-
-            // Sort by flow to get top inflows/outflows
-            const topInflows = [...etfFlows].filter(e => e.flow > 0).sort((a, b) => b.flow - a.flow).slice(0, 3);
-                    const topOutflows = [...etfFlows].filter(e => e.flow < 0).sort((a, b) => a.flow - b.flow).slice(0, 3);
-
-            // Get previous day for comparison
-            let previousTotal = null;
-                    if (latestRows.length >= 2) {
-                                    const prev = latestRows[latestRows.length - 2];
-                                    previousTotal = parseETFValue(prev[prev.length - 1]);
-                    }
-
-            return {
-                            date,
-                            totalFlow: totalFlow || 0,
-                            previousDayTotal: previousTotal,
-                            topInflows: topInflows.map(e => `${e.name}: +$${e.flow.toFixed(1)}M`),
-                            topOutflows: topOutflows.map(e => `${e.name}: -$${Math.abs(e.flow).toFixed(1)}M`),
-                            etfFlows,
-                            flowDirection: totalFlow > 0 ? '순유입' : totalFlow < 0 ? '순유출' : '보합',
-            };
-        } catch (err) {
-                    console.error(`[BTC ETF 에러] ${err.message}`);
-                    return null;
-        }
-}
-
-async function fetchETHETFFlow() {
-        try {
-                    const html = await fetchHTML('https://farside.co.uk/ethereum-etf-flow-all-data/', 'Farside ETH ETF');
-                    if (!html) return null;
-
-            const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-                    const rows = [];
-                    let match;
-                    while ((match = rowRegex.exec(html)) !== null) {
-                                    rows.push(match[1]);
-                    }
-
-            const dataRows = [];
-                    for (const row of rows) {
-                                    const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
-                                    if (!cells || cells.length < 5) continue;
-                                    const firstCell = cells[0].replace(/<[^>]*>/g, '').trim();
-                                    if (/\d{2}\s\w{3}\s\d{4}/.test(firstCell)) {
-                                                        const values = cells.map(c => c.replace(/<[^>]*>/g, '').trim());
-                                                        dataRows.push(values);
-                                    }
-                    }
-
-            if (dataRows.length === 0) return null;
-
-            const validRows = dataRows.filter(r => {
-                            const total = parseETFValue(r[r.length - 1]);
-                            return total !== null;
-            });
-
-            const latestRows = validRows.slice(-3);
-                    const latest = latestRows[latestRows.length - 1];
-                    if (!latest) return null;
-
-            const date = latest[0];
-                    const totalFlow = parseETFValue(latest[latest.length - 1]);
-
-            const etfNames = ['ETHA', 'ETHB', 'FETH', 'ETHW', 'TETH', 'ETHV', 'QETH', 'EZET', 'ETHE', 'ETH'];
-                    const etfFlows = [];
-                    for (let i = 1; i < latest.length - 1 && i - 1 < etfNames.length; i++) {
-                                    const val = parseETFValue(latest[i]);
-                                    if (val !== null) {
-                                                        etfFlows.push({ name: etfNames[i - 1], flow: val });
-                                    }
-                    }
-
-            const topInflows = [...etfFlows].filter(e => e.flow > 0).sort((a, b) => b.flow - a.flow).slice(0, 3);
-                    const topOutflows = [...etfFlows].filter(e => e.flow < 0).sort((a, b) => a.flow - b.flow).slice(0, 3);
-
-            let previousTotal = null;
-                    if (latestRows.length >= 2) {
-                                    const prev = latestRows[latestRows.length - 2];
-                                    previousTotal = parseETFValue(prev[prev.length - 1]);
-                    }
-
-            return {
-                            date,
-                            totalFlow: totalFlow || 0,
-                            previousDayTotal: previousTotal,
-                            topInflows: topInflows.map(e => `${e.name}: +$${e.flow.toFixed(1)}M`),
-                            topOutflows: topOutflows.map(e => `${e.name}: -$${Math.abs(e.flow).toFixed(1)}M`),
-                            etfFlows,
-                            flowDirection: totalFlow > 0 ? '순유입' : totalFlow < 0 ? '순유출' : '보합',
-            };
-        } catch (err) {
-                    console.error(`[ETH ETF 에러] ${err.message}`);
-                    return null;
-        }
-}
-
 async function fetchETFData() {
-        const [btcETF, ethETF] = await Promise.all([
-                    fetchBTCETFFlow(),
-                    fetchETHETFFlow(),
-                ]);
+  if (!REDIS_URL) {
+    console.warn('[ETF] REDIS_URL not set; skipping ETF data');
+    return null;
+  }
 
-    if (!btcETF && !ethETF) return null;
+  let redis;
+  try {
+    redis = new Redis(REDIS_URL, {
+      connectTimeout: 5000,
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+    });
+    await redis.connect();
+
+    const raw = await redis.get('etf:latest');
+    if (!raw) {
+      console.warn('[ETF] No etf:latest key in Redis');
+      return null;
+    }
+
+    const data = JSON.parse(raw);
+    const btcData = data.btc;
+    const ethData = data.eth;
+
+    // Convert coineasydaily format to briefing format
+    function convertETF(coinData) {
+      if (!coinData) return null;
+      const totalM = coinData.total_net_inflow / 1_000_000;
+      const etfFlows = (coinData.funds || []).map(f => ({
+        name: f.ticker,
+        flow: f.net_inflow / 1_000_000,
+      }));
+      const topInflows = etfFlows.filter(e => e.flow > 0).sort((a, b) => b.flow - a.flow).slice(0, 3);
+      const topOutflows = etfFlows.filter(e => e.flow < 0).sort((a, b) => a.flow - b.flow).slice(0, 3);
+
+      return {
+        date: coinData.date || '',
+        totalFlow: totalM,
+        previousDayTotal: null,
+        topInflows: topInflows.map(e => `${e.name}: +$${e.flow.toFixed(1)}M`),
+        topOutflows: topOutflows.map(e => `${e.name}: -$${Math.abs(e.flow).toFixed(1)}M`),
+        etfFlows,
+        flowDirection: totalM > 0 ? '순유입' : totalM < 0 ? '순유출' : '보합',
+      };
+    }
+
+    const btcETF = convertETF(btcData);
+    const ethETF = convertETF(ethData);
+
+    console.log(`[ETF Redis] Updated: ${data.updated_at} | BTC: $${btcETF?.totalFlow?.toFixed(1)}M | ETH: $${ethETF?.totalFlow?.toFixed(1)}M`);
 
     return {
-                btc: btcETF,
-                eth: ethETF,
-                summary: {
-                                btcTotal: btcETF ? `$${btcETF.totalFlow.toFixed(1)}M` : 'N/A',
-                                ethTotal: ethETF ? `$${ethETF.totalFlow.toFixed(1)}M` : 'N/A',
-                                btcDirection: btcETF?.flowDirection || 'N/A',
-                                ethDirection: ethETF?.flowDirection || 'N/A',
-                },
+      btc: btcETF,
+      eth: ethETF,
+      summary: {
+        btcTotal: btcETF ? `$${btcETF.totalFlow.toFixed(1)}M` : 'N/A',
+        ethTotal: ethETF ? `$${ethETF.totalFlow.toFixed(1)}M` : 'N/A',
+        btcDirection: btcETF?.flowDirection || 'N/A',
+        ethDirection: ethETF?.flowDirection || 'N/A',
+      },
     };
+  } catch (err) {
+    console.error(`[ETF Redis 에러] ${err.message}`);
+    return null;
+  } finally {
+    if (redis) {
+      try { await redis.quit(); } catch (e) { /* ignore */ }
+    }
+  }
 }
 
 // ============================================================
