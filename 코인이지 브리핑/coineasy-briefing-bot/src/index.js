@@ -180,3 +180,13 @@ console.log('Job 3 (Briefing PM) : daily UTC 09:00 (KST 18:00)');
 console.log('Job 4 (Shorts PM)   : daily UTC 09:05 (KST 18:05)');
 console.log('');
 
+// === ONE-TIME TEST TRIGGER (remove after test) ===
+(async () => {
+  console.log('ONE-TIME TEST: Running briefing pipeline...');
+  await runBriefingPipeline();
+  const session = getSession(new Date());
+  console.log('ONE-TIME TEST: Running YouTube Shorts...');
+  await runYouTubeShorts(session);
+  console.log('ONE-TIME TEST: Complete!');
+})();
+
