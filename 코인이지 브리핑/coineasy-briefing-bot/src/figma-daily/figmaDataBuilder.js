@@ -15,6 +15,9 @@
 
 // ESM mode
 
+import Redis from 'ioredis';
+const REDIS_URL = process.env.REDIS_URL || '';
+
 const COIN_IDS = {
         BTC: 'bitcoin',
         ETH: 'ethereum',
@@ -143,81 +146,51 @@ async function fetchDefiHot() {
 }
 
 async function fetchETFFlow() {
-  try {
-    // Fetch BTC ETF flow from Farside Investors
-    const btcRes = await fetch('https://farside.co.uk/bitcoin-etf-flow-all-data/', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoinEasyBot/1.0)' },
-      signal: AbortSignal.timeout(15000)
-    });
-    const btcHtml = await btcRes.text();
-    
-    // Parse the HTML table
-    const parseETFTable = (html) => {
-      const rows = html.match(/<tr[^>]*>.*?<\/tr>/gs) || [];
-      let lastValidRow = null;
-      let prevRow = null;
-      
-      for (const row of rows) {
-        const cells = row.match(/<td[^>]*>(.*?)<\/td>/g) || [];
-        if (cells.length < 3) continue;
-        
-        const firstCell = cells[0].replace(/<[^>]*>/g, '').trim();
-        // Check if first cell is a date (dd Mon yyyy pattern)
-        if (/^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i.test(firstCell)) {
-          const lastCell = cells[cells.length - 1].replace(/<[^>]*>/g, '').trim();
-          if (lastCell && lastCell !== '-' && lastCell !== '') {
-            prevRow = lastValidRow;
-            lastValidRow = { date: firstCell, cells };
-          }
-        }
-      }
-      
-      if (!lastValidRow) return null;
-      
-      const parseVal = (str) => {
-        const clean = str.replace(/<[^>]*>/g, '').trim();
-        if (!clean || clean === '-') return 0;
-        // Handle parentheses for negative: (123.4) → -123.4
-        const negMatch = clean.match(/\(([\d.]+)\)/);
-        if (negMatch) return -parseFloat(negMatch[1]);
-        return parseFloat(clean.replace(/,/g, '')) || 0;
-      };
-      
-      const cellValues = lastValidRow.cells.map(c => c.replace(/<[^>]*>/g, '').trim());
-      const total = parseVal(lastValidRow.cells[lastValidRow.cells.length - 1].replace(/<[^>]*>/g, ''));
-      
-      let prevTotal = null;
-      if (prevRow) {
-        prevTotal = parseVal(prevRow.cells[prevRow.cells.length - 1].replace(/<[^>]*>/g, ''));
-      }
-      
-      return {
-        date: lastValidRow.date,
-        totalFlow: total,
-        previousDayTotal: prevTotal,
-        flowDirection: total > 0 ? '순유입' : total < 0 ? '순유출' : '보합'
-      };
-    };
-    
-    const btcETF = parseETFTable(btcHtml);
-    
-    // Fetch ETH ETF flow
-    let ethETF = null;
-    try {
-      const ethRes = await fetch('https://farside.co.uk/ethereum-etf-flow-all-data/', {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoinEasyBot/1.0)' },
-        signal: AbortSignal.timeout(15000)
-      });
-      const ethHtml = await ethRes.text();
-      ethETF = parseETFTable(ethHtml);
-    } catch (e) {
-      console.warn('[etf] ETH ETF fetch error:', e.message);
-    }
-    
-    return { btc: btcETF, eth: ethETF };
-  } catch (e) {
-    console.warn('[etf] ETF flow fetch error:', e.message);
+  if (!REDIS_URL) {
+    console.warn('[etf] REDIS_URL not set, skipping ETF data');
     return { btc: null, eth: null };
+  }
+
+  let redis;
+  try {
+    redis = new Redis(REDIS_URL, {
+      connectTimeout: 5000,
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+    });
+    await redis.connect();
+
+    const raw = await redis.get('etf:latest');
+    if (!raw) {
+      console.warn('[etf] No etf:latest key in Redis');
+      return { btc: null, eth: null };
+    }
+
+    const data = JSON.parse(raw);
+    console.log('[etf] Redis data updated_at:', data.updated_at);
+
+    function convert(coinData) {
+      if (!coinData) return null;
+      const totalM = coinData.total_net_inflow / 1_000_000;
+      return {
+        date: coinData.date || '',
+        totalFlow: totalM,
+        previousDayTotal: null,
+        flowDirection: totalM > 0 ? '순유입' : totalM < 0 ? '순유출' : '보합',
+      };
+    }
+
+    return {
+      btc: convert(data.btc),
+      eth: convert(data.eth),
+    };
+  } catch (e) {
+    console.warn('[etf] Redis ETF fetch error:', e.message);
+    return { btc: null, eth: null };
+  } finally {
+    if (redis) {
+      try { await redis.quit(); } catch (e) { /* ignore */ }
+    }
   }
 }
 
