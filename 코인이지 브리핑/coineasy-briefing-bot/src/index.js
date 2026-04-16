@@ -12,6 +12,7 @@ import { collectAllData } from './fetcher.js';
 import { generateTelegramBriefing } from './generator.js';
 import { sendTelegramMessage } from './telegram.js';
 import { exportFigmaBanner, sendTelegramPhoto } from './figma-banner.js';
+import { postBriefingToSocial } from './typefully-poster.js';
 
 // ─── 환경변수 ──────────────────────────────────────────
 const CONFIG = {
@@ -104,6 +105,30 @@ async function runBriefingPipeline() {
         await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
         console.log('  ✅ 텍스트 브리핑만 공지방 발송 (배너 fallback)');
       }
+    }
+
+    // Step 4: Typefully 소셜 포스팅 (X + LinkedIn + Threads)
+    if (briefingText && process.env.TYPEFULLY_API_KEY && process.env.TYPEFULLY_SOCIAL_SET_ID) {
+      console.log('\n📱 Step 4: Typefully 소셜 포스팅 중...');
+      try {
+        // 배너 버퍼 가져오기 (위에서 생성된 배너 재사용)
+        let bannerBuffer = null;
+        try {
+          const br = await exportFigmaBanner(data);
+          if (br?.buffer) bannerBuffer = br.buffer;
+        } catch (_) { /* 배너 재생성 실패는 무시, 텍스트만 발송 */ }
+
+        const socialResult = await postBriefingToSocial(briefingText, bannerBuffer);
+        if (socialResult.success) {
+          console.log(`  ✅ Typefully 포스팅 완료 (X, LinkedIn, Threads)`);
+        } else {
+          console.error(`  ⚠️ Typefully 포스팅 실패: ${socialResult.error}`);
+        }
+      } catch (tfErr) {
+        console.error(`  ❌ Typefully 에러: ${tfErr.message}`);
+      }
+    } else {
+      console.log('\n⏭️ Step 4: Typefully 스킵 (TYPEFULLY_API_KEY 또는 TYPEFULLY_SOCIAL_SET_ID 미설정)');
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

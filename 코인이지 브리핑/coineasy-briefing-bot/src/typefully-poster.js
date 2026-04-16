@@ -7,9 +7,7 @@
  *   TYPEFULLY_SOCIAL_SET_ID - Social Set ID (GET /v2/social-sets 로 확인)
  */
 
-'use strict';
-
-const fetch = require('node-fetch');
+// Using global fetch (Node 18+)
 
 const API_BASE = 'https://api.typefully.com';
 
@@ -215,9 +213,9 @@ async function postBriefingToSocial(text, bannerBuffer = null) {
     }
 }
 
-module.exports = {
-    postToSocial,
-    uploadMedia,
-    postBriefingToSocial,
-    listSocialSets,
+export {
+  postToSocial,
+  uploadMedia,
+  postBriefingToSocial,
+  listSocialSets
 };
