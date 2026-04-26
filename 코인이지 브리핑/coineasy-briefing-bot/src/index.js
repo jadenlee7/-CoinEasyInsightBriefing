@@ -113,24 +113,47 @@ async function runBriefingPipeline() {
     if (briefingText && process.env.TYPEFULLY_API_KEY && process.env.TYPEFULLY_SOCIAL_SET_ID) {
       console.log('\n📱 Step 4: Typefully 소셜 포스팅 중...');
       try {
-        // 배너 버퍼 가져오기 (위에서 생성된 배너 재사용)
+        // 소셜 미디어용 텍스트 (Markdown 제거 + 간결하게)
+        const socialText = briefingText
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
+          .replace(/\*([^*]+)\*/g, '$1')               // *bold* → bold
+          .replace(/_([^_]+)_/g, '$1')                   // _italic_ → italic
+          .replace(/#이지에드.*$/gm, '')                   // 해시태그 줄 제거
+          .replace(/📢.*$/gm, '')                        // 공지방 링크 줄 제거
+          .trim();
+
+        // 배너 이미지 (이미 생성된 것 재사용)
         let bannerBuffer = null;
         try {
-          const br = await exportFigmaBanner(data);
-          if (br?.buffer) bannerBuffer = br.buffer;
-        } catch (_) { /* 배너 재생성 실패는 무시, 텍스트만 발송 */ }
+          const bannersDir = './banners';
+          const { existsSync, readdirSync, readFileSync } = await import('fs');
+          if (existsSync(bannersDir)) {
+            const files = readdirSync(bannersDir).filter(f => f.endsWith('.png')).sort().reverse();
+            if (files.length > 0) {
+              const { join } = await import('path');
+              bannerBuffer = readFileSync(join(bannersDir, files[0]));
+              console.log(`  🖼️ 배너 로드: ${files[0]} (${Math.round(bannerBuffer.length / 1024)}KB)`);
+            }
+          }
+        } catch (_) { /* 배너 로드 실패 무시 */ }
 
-        const socialResult = await postBriefingToSocial(briefingText, bannerBuffer);
+        console.log(`  📝 소셜 텍스트: ${socialText.length}자`);
+        const socialResult = await postBriefingToSocial(socialText, bannerBuffer);
         if (socialResult.success) {
-          console.log(`  ✅ Typefully 포스팅 완료 (X, LinkedIn, Threads)`);
+          console.log(`  ✅ Typefully 포스팅 완료!`);
+          if (socialResult.xUrl) console.log(`    → X: ${socialResult.xUrl}`);
         } else {
           console.error(`  ⚠️ Typefully 포스팅 실패: ${socialResult.error}`);
         }
       } catch (tfErr) {
         console.error(`  ❌ Typefully 에러: ${tfErr.message}`);
+        console.error(tfErr.stack);
       }
     } else {
-      console.log('\n⏭️ Step 4: Typefully 스킵 (TYPEFULLY_API_KEY 또는 TYPEFULLY_SOCIAL_SET_ID 미설정)');
+      const missing = [];
+      if (!process.env.TYPEFULLY_API_KEY) missing.push('TYPEFULLY_API_KEY');
+      if (!process.env.TYPEFULLY_SOCIAL_SET_ID) missing.push('TYPEFULLY_SOCIAL_SET_ID');
+      console.log(`\n⏭️ Step 4: Typefully 스킵 (미설정: ${missing.join(', ') || 'briefingText 없음'})`);
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
