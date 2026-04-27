@@ -59,7 +59,7 @@ async function listSocialSets() {
 async function postToSocial(text, options = {}) {
     const {
           platforms = ['x', 'linkedin', 'threads'],
-          publishAt = 'next-free-slot', // 'next-free-slot' | ISO날짜 | null(초안)
+          publishAt = null,             // ISO날짜 | null(즉시 발행)
           draftTitle = null,
           mediaIds = null,             // 미디어 ID 배열 (Typefully 업로드 후)
     } = options;
@@ -80,9 +80,12 @@ async function postToSocial(text, options = {}) {
         };
   }
 
+  // schedule_date: ISO 8601 (즉시 발행 = 1분 후)
+  const scheduleDate = publishAt || new Date(Date.now() + 60 * 1000).toISOString();
+
   const body = {
         platforms: platformsPayload,
-        schedule_date: publishAt,
+        schedule_date: scheduleDate,
   };
 
   if (draftTitle) {
@@ -90,7 +93,7 @@ async function postToSocial(text, options = {}) {
   }
 
   const enabledPlatforms = platforms.join(', ');
-    console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | schedule_date: ${publishAt}`);
+    console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | schedule_date: ${scheduleDate}`);
 
   const res = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/drafts`, {
         method: 'POST',
@@ -216,7 +219,7 @@ async function postBriefingToSocial(text, bannerBuffer = null) {
 
       const result = await postToSocial(text, {
               platforms: ['x', 'linkedin', 'threads'],
-              publishAt: 'next-free-slot',
+              publishAt: null,  // null = 즉시 발행 (1분 후)
               draftTitle: `코인이지 데일리 브리핑 ${new Date().toISOString().slice(0, 10)}`,
               mediaIds,
       });
