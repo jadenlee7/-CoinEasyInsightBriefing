@@ -139,42 +139,63 @@ async function postToSocial(text, options = {}) {
 async function uploadMedia(imageBuffer, filename = 'banner.png') {
     const socialSetId = getSocialSetId();
     const apiKey = process.env.TYPEFULLY_API_KEY;
+    if (!apiKey) throw new Error('TYPEFULLY_API_KEY 환경변수 미설정');
 
-  if (!apiKey) {
-        throw new Error('TYPEFULLY_API_KEY 환경변수가 설정되지 않았습니다.');
-  }
-
-  // Base64 인코딩
-  const base64 = imageBuffer.toString('base64');
     const mimeType = filename.endsWith('.jpg') || filename.endsWith('.jpeg')
-      ? 'image/jpeg'
-          : 'image/png';
+      ? 'image/jpeg' : 'image/png';
 
-  const body = {
-        file: `data:${mimeType};base64,${base64}`,
-        filename: filename,
-  };
+    console.log(`[Typefully] 미디어 업로드 중... (${filename}, ${Math.round(imageBuffer.length / 1024)}KB)`);
 
-  console.log(`[Typefully] 미디어 업로드 중... (${filename}, ${Math.round(imageBuffer.length / 1024)}KB)`);
+    try {
+          // Step 1: presigned upload URL 요청
+          const presignRes = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/presigned-upload-url`, {
+                  method: 'POST',
+                  headers: getHeaders(),
+                  body: JSON.stringify({ filename, content_type: mimeType }),
+          });
 
-  const res = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/media`, {
-        method: 'POST',
-        headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-  });
+          if (presignRes.ok) {
+                  const presignData = await presignRes.json();
+                  const uploadUrl = presignData.upload_url || presignData.url;
+                  const mediaId = presignData.media_id || presignData.id;
 
-  if (!res.ok) {
-        const errBody = await res.text();
-        console.error(`[Typefully 미디어 에러] ${res.status}: ${errBody}`);
-        return null;
-  }
+                  if (uploadUrl) {
+                          // Step 2: S3에 파일 업로드
+                          const uploadRes = await fetch(uploadUrl, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': mimeType },
+                                  body: imageBuffer,
+                          });
+                          if (uploadRes.ok) {
+                                  console.log(`[Typefully] 미디어 업로드 성공! Media ID: ${mediaId}`);
+                                  return mediaId;
+                          }
+                          console.warn(`[Typefully] S3 업로드 실패: ${uploadRes.status}`);
+                  }
+          }
 
-  const data = await res.json();
-    console.log(`[Typefully] 미디어 업로드 성공! Media ID: ${data.id}`);
-    return data.id;
+          // Fallback: 직접 base64 업로드 시도
+          const base64 = imageBuffer.toString('base64');
+          const directRes = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/media`, {
+                  method: 'POST',
+                  headers: getHeaders(),
+                  body: JSON.stringify({ file: `data:${mimeType};base64,${base64}`, filename }),
+          });
+
+          if (directRes.ok) {
+                  const data = await directRes.json();
+                  console.log(`[Typefully] 미디어 직접 업로드 성공! Media ID: ${data.id}`);
+                  return data.id;
+          }
+
+          const errBody = await directRes.text();
+          console.warn(`[Typefully] 미디어 업로드 실패 (${directRes.status}) — 텍스트만 포스팅`);
+          return null;
+
+    } catch (err) {
+          console.warn(`[Typefully] 미디어 업로드 에러: ${err.message} — 텍스트만 포스팅`);
+          return null;
+    }
 }
 
 // ============================================================
@@ -183,14 +204,21 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
 
 async function postBriefingToSocial(text, bannerBuffer = null) {
     try {
-      // 미디어 업로드 비활성화 (Typefully API v2 media endpoint 404 이슈)
-      // TODO: Typefully 미디어 API 엔드포인트 확인 후 재활성화
+      let mediaIds = null;
+
+      // 배너 이미지 업로드 (presigned S3 → fallback base64)
+      if (bannerBuffer) {
+              const mediaId = await uploadMedia(bannerBuffer, 'briefing-banner.png');
+              if (mediaId) {
+                        mediaIds = [mediaId];
+              }
+      }
 
       const result = await postToSocial(text, {
               platforms: ['x', 'linkedin', 'threads'],
               publishAt: 'next-free-slot',
               draftTitle: `코인이지 데일리 브리핑 ${new Date().toISOString().slice(0, 10)}`,
-              mediaIds: mediaIds,
+              mediaIds,
       });
 
       return result;
