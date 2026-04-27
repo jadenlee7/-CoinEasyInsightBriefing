@@ -76,10 +76,12 @@ async function runBriefingPipeline() {
     // Step 3: 배너 이미지 생성 + 브리핑 캡션으로 합쳐서 한 포스트로 전송
     console.log('\n🎨 Step 3: 배너 이미지 생성 + 포스팅...');
     const targetChatId = CONFIG.channelId || CONFIG.chatId;
+    let savedBannerBuffer = null;  // Step 4 Typefully에서도 사용
     try {
       const bannerResult = await exportFigmaBanner(data);
       if (bannerResult && bannerResult.buffer) {
         console.log(`  ✅ 배너 생성 완료 (${(bannerResult.size / 1024).toFixed(1)}KB)`);
+        savedBannerBuffer = bannerResult.buffer;
         if (targetChatId && CONFIG.botToken) {
           // 배너 이미지 + 텍스트 브리핑을 캡션으로 합쳐서 하나의 포스트로 전송
           const caption = briefingText || null;
@@ -122,23 +124,15 @@ async function runBriefingPipeline() {
           .replace(/📢.*$/gm, '')                        // 공지방 링크 줄 제거
           .trim();
 
-        // 배너 이미지 (이미 생성된 것 재사용)
-        let bannerBuffer = null;
-        try {
-          const bannersDir = './banners';
-          const { existsSync, readdirSync, readFileSync } = await import('fs');
-          if (existsSync(bannersDir)) {
-            const files = readdirSync(bannersDir).filter(f => f.endsWith('.png')).sort().reverse();
-            if (files.length > 0) {
-              const { join } = await import('path');
-              bannerBuffer = readFileSync(join(bannersDir, files[0]));
-              console.log(`  🖼️ 배너 로드: ${files[0]} (${Math.round(bannerBuffer.length / 1024)}KB)`);
-            }
-          }
-        } catch (_) { /* 배너 로드 실패 무시 */ }
+        // 배너 이미지 (Step 3에서 생성한 것 직접 사용)
+        if (savedBannerBuffer) {
+          console.log(`  🖼️ 배너 버퍼 사용 (${Math.round(savedBannerBuffer.length / 1024)}KB)`);
+        } else {
+          console.log('  ⚠️ 배너 없음 — 텍스트만 포스팅');
+        }
 
         console.log(`  📝 소셜 텍스트: ${socialText.length}자`);
-        const socialResult = await postBriefingToSocial(socialText, bannerBuffer);
+        const socialResult = await postBriefingToSocial(socialText, savedBannerBuffer);
         if (socialResult.success) {
           console.log(`  ✅ Typefully 포스팅 완료!`);
           if (socialResult.xUrl) console.log(`    → X: ${socialResult.xUrl}`);
