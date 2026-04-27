@@ -72,7 +72,12 @@ async function postToSocial(text, options = {}) {
   for (const platform of platforms) {
         const post = { text };
         if (mediaIds && mediaIds.length > 0) {
-                post.media_ids = mediaIds;
+                // v1 API returns URL strings, v2 returns IDs
+                if (typeof mediaIds[0] === 'string' && mediaIds[0].startsWith('http')) {
+                        post.media_urls = mediaIds;
+                } else {
+                        post.media_ids = mediaIds;
+                }
         }
         platformsPayload[platform] = {
                 enabled: true,
@@ -149,8 +154,31 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
 
     console.log(`[Typefully] 미디어 업로드 중... (${filename}, ${Math.round(imageBuffer.length / 1024)}KB)`);
 
+    // 방법 1: Typefully v1 API (multipart/form-data)
     try {
-          // Step 1: presigned upload URL 요청
+          const blob = new Blob([imageBuffer], { type: mimeType });
+          const formData = new FormData();
+          formData.append('image', blob, filename);
+
+          const v1Res = await fetch(`${API_BASE}/v1/image-upload`, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${apiKey}` },
+                  body: formData,
+          });
+
+          if (v1Res.ok) {
+                  const v1Data = await v1Res.json();
+                  const mediaUrl = v1Data.url || v1Data.image_url;
+                  console.log(`[Typefully] v1 이미지 업로드 성공: ${mediaUrl}`);
+                  return mediaUrl;  // v1은 URL을 반환
+          }
+          console.warn(`[Typefully] v1 업로드 실패 (${v1Res.status})`);
+    } catch (e1) {
+          console.warn(`[Typefully] v1 업로드 에러: ${e1.message}`);
+    }
+
+    // 방법 2: presigned S3 URL
+    try {
           const presignRes = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/presigned-upload-url`, {
                   method: 'POST',
                   headers: getHeaders(),
@@ -163,42 +191,24 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
                   const mediaId = presignData.media_id || presignData.id;
 
                   if (uploadUrl) {
-                          // Step 2: S3에 파일 업로드
                           const uploadRes = await fetch(uploadUrl, {
                                   method: 'PUT',
                                   headers: { 'Content-Type': mimeType },
                                   body: imageBuffer,
                           });
                           if (uploadRes.ok) {
-                                  console.log(`[Typefully] 미디어 업로드 성공! Media ID: ${mediaId}`);
+                                  console.log(`[Typefully] presigned 업로드 성공! ID: ${mediaId}`);
                                   return mediaId;
                           }
-                          console.warn(`[Typefully] S3 업로드 실패: ${uploadRes.status}`);
                   }
           }
-
-          // Fallback: 직접 base64 업로드 시도
-          const base64 = imageBuffer.toString('base64');
-          const directRes = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/media`, {
-                  method: 'POST',
-                  headers: getHeaders(),
-                  body: JSON.stringify({ file: `data:${mimeType};base64,${base64}`, filename }),
-          });
-
-          if (directRes.ok) {
-                  const data = await directRes.json();
-                  console.log(`[Typefully] 미디어 직접 업로드 성공! Media ID: ${data.id}`);
-                  return data.id;
-          }
-
-          const errBody = await directRes.text();
-          console.warn(`[Typefully] 미디어 업로드 실패 (${directRes.status}) — 텍스트만 포스팅`);
-          return null;
-
-    } catch (err) {
-          console.warn(`[Typefully] 미디어 업로드 에러: ${err.message} — 텍스트만 포스팅`);
-          return null;
+          console.warn(`[Typefully] presigned 업로드 실패`);
+    } catch (e2) {
+          console.warn(`[Typefully] presigned 에러: ${e2.message}`);
     }
+
+    console.warn('[Typefully] 모든 미디어 업로드 실패 — 텍스트만 포스팅');
+    return null;
 }
 
 // ============================================================
