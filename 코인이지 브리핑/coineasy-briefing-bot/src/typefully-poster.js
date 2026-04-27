@@ -59,7 +59,7 @@ async function listSocialSets() {
 async function postToSocial(text, options = {}) {
     const {
           platforms = ['x', 'linkedin', 'threads'],
-          publishAt = 'now',           // 'now' | 'next-free-slot' | ISO날짜 | null(초안)
+          publishAt = 'next-free-slot', // 'next-free-slot' | ISO날짜 | null(초안)
           draftTitle = null,
           mediaIds = null,             // 미디어 ID 배열 (Typefully 업로드 후)
     } = options;
@@ -82,7 +82,7 @@ async function postToSocial(text, options = {}) {
 
   const body = {
         platforms: platformsPayload,
-        publish_at: publishAt,
+        schedule_date: publishAt,
   };
 
   if (draftTitle) {
@@ -90,7 +90,7 @@ async function postToSocial(text, options = {}) {
   }
 
   const enabledPlatforms = platforms.join(', ');
-    console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | publish_at: ${publishAt}`);
+    console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | schedule_date: ${publishAt}`);
 
   const res = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/drafts`, {
         method: 'POST',
@@ -183,21 +183,12 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
 
 async function postBriefingToSocial(text, bannerBuffer = null) {
     try {
-          let mediaIds = null;
-
-      // 배너 이미지가 있으면 먼저 업로드
-      if (bannerBuffer) {
-              const mediaId = await uploadMedia(bannerBuffer, 'briefing-banner.png');
-              if (mediaId) {
-                        mediaIds = [mediaId];
-              } else {
-                        console.warn('[Typefully] 배너 업로드 실패 - 텍스트만 포스팅합니다.');
-              }
-      }
+      // 미디어 업로드 비활성화 (Typefully API v2 media endpoint 404 이슈)
+      // TODO: Typefully 미디어 API 엔드포인트 확인 후 재활성화
 
       const result = await postToSocial(text, {
               platforms: ['x', 'linkedin', 'threads'],
-              publishAt: 'now',
+              publishAt: 'next-free-slot',
               draftTitle: `코인이지 데일리 브리핑 ${new Date().toISOString().slice(0, 10)}`,
               mediaIds: mediaIds,
       });
