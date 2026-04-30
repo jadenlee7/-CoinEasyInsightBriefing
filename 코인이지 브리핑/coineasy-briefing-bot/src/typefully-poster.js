@@ -85,12 +85,12 @@ async function postToSocial(text, options = {}) {
         };
   }
 
-  // schedule_date: ISO 8601 (즉시 발행 = 1분 후)
-  const scheduleDate = publishAt || new Date(Date.now() + 60 * 1000).toISOString();
+  // publish_at: ISO 8601 (Typefully v2 API 필드명)
+  const publishAtIso = publishAt || new Date(Date.now() + 60_000).toISOString();
 
   const body = {
         platforms: platformsPayload,
-        schedule_date: scheduleDate,
+        publish_at: publishAtIso,
   };
 
   if (draftTitle) {
@@ -98,7 +98,7 @@ async function postToSocial(text, options = {}) {
   }
 
   const enabledPlatforms = platforms.join(', ');
-    console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | schedule_date: ${scheduleDate}`);
+    console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | publish_at: ${publishAtIso}`);
 
   const res = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/drafts`, {
         method: 'POST',
@@ -215,7 +215,7 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
 // 편의 함수: 텍스트 + 배너 이미지 → 소셜 포스팅
 // ============================================================
 
-async function postBriefingToSocial(text, bannerBuffer = null) {
+async function postBriefingToSocial(text, bannerBuffer = null, publishAt = null) {
     try {
       let mediaIds = null;
 
@@ -229,7 +229,7 @@ async function postBriefingToSocial(text, bannerBuffer = null) {
 
       const result = await postToSocial(text, {
               platforms: ['x', 'linkedin', 'threads'],
-              publishAt: null,  // null = 즉시 발행 (1분 후)
+              publishAt: publishAt,  // null = 즉시 발행 (1분 후), 또는 호출자가 지정한 ISO8601
               draftTitle: `코인이지 데일리 브리핑 ${new Date().toISOString().slice(0, 10)}`,
               mediaIds,
       });
