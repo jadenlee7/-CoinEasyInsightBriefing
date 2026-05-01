@@ -120,8 +120,10 @@ async function runBriefingPipeline() {
           .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
           .replace(/\*([^*]+)\*/g, '$1')               // *bold* → bold
           .replace(/_([^_]+)_/g, '$1')                   // _italic_ → italic
-          .replace(/#이지에드.*$/gm, '')                   // 해시태그 줄 제거
+          .replace(/^.*#[^\s#]+(?:\s+#[^\s#]+)*\s*$/gm, '')  // 해시태그만 있는 줄 통째로 제거 (한국어/영어 모두)
+          .replace(/\s+#[^\s#]+/g, '')                 // 인라인 해시태그도 제거
           .replace(/📢.*$/gm, '')                        // 공지방 링크 줄 제거
+          .replace(/\n{3,}/g, '\n\n')                 // 빈 줄 정리
           .trim();
 
         // 배너 이미지 (Step 3에서 생성한 것 직접 사용)
