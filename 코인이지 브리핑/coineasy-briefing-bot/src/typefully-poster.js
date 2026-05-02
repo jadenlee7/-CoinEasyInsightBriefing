@@ -150,65 +150,63 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
     if (!apiKey) throw new Error('TYPEFULLY_API_KEY 환경변수 미설정');
 
     const mimeType = filename.endsWith('.jpg') || filename.endsWith('.jpeg')
-      ? 'image/jpeg' : 'image/png';
+        ? 'image/jpeg' : 'image/png';
 
-    console.log(`[Typefully] 미디어 업로드 중... (${filename}, ${Math.round(imageBuffer.length / 1024)}KB)`);
+    console.log(`[Typefully] 미디어 업로드 시작: ${filename} (${Math.round(imageBuffer.length / 1024)}KB)`);
 
-    // 방법 1: Typefully v1 API (multipart/form-data)
     try {
-          const blob = new Blob([imageBuffer], { type: mimeType });
-          const formData = new FormData();
-          formData.append('image', blob, filename);
+        // Step 1: presigned upload URL 요청 (Typefully API v2)
+        const step1Res = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/media/upload`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ file_name: filename }),
+        });
 
-          const v1Res = await fetch(`${API_BASE}/v1/image-upload`, {
-                  method: 'POST',
-                  headers: { 'Authorization': `Bearer ${apiKey}` },
-                  body: formData,
-          });
+        if (step1Res.status !== 201) {
+            const errText = await step1Res.text().catch(() => '');
+            console.warn(`[Typefully] presigned URL 요청 실패 (${step1Res.status}): ${errText}`);
+            return null;
+        }
 
-          if (v1Res.ok) {
-                  const v1Data = await v1Res.json();
-                  const mediaUrl = v1Data.url || v1Data.image_url;
-                  console.log(`[Typefully] v1 이미지 업로드 성공: ${mediaUrl}`);
-                  return mediaUrl;  // v1은 URL을 반환
-          }
-          console.warn(`[Typefully] v1 업로드 실패 (${v1Res.status})`);
-    } catch (e1) {
-          console.warn(`[Typefully] v1 업로드 에러: ${e1.message}`);
+        const { media_id: mediaId, upload_url: uploadUrl } = await step1Res.json();
+        console.log(`[Typefully] media_id 획득: ${mediaId}`);
+
+        // Step 2: S3에 직접 PUT (presigned URL이 모든 서명 포함, 추가 헤더 X)
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: imageBuffer,
+        });
+
+        if (!uploadRes.ok) {
+            console.warn(`[Typefully] S3 PUT 실패 (${uploadRes.status})`);
+            return null;
+        }
+        console.log(`[Typefully] S3 업로드 완료, processing 대기 중...`);
+
+        // Step 3: media status 폴링 (최대 60초, 2초 간격)
+        for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            const statusRes = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/media/${mediaId}`, {
+                method: 'GET',
+                headers: getHeaders(),
+            });
+            if (!statusRes.ok) continue;
+            const statusData = await statusRes.json();
+            if (statusData.status === 'ready') {
+                console.log(`[Typefully] 미디어 ready! ID: ${mediaId}`);
+                return mediaId;
+            }
+            if (statusData.status === 'failed') {
+                console.warn(`[Typefully] 미디어 처리 실패: ${statusData.error_reason || 'unknown'}`);
+                return null;
+            }
+        }
+        console.warn(`[Typefully] 미디어 ready 타임아웃 (60초)`);
+        return null;
+    } catch (e) {
+        console.warn(`[Typefully] 업로드 에러: ${e.message}`);
+        return null;
     }
-
-    // 방법 2: presigned S3 URL
-    try {
-          const presignRes = await fetch(`${API_BASE}/v2/social-sets/${socialSetId}/presigned-upload-url`, {
-                  method: 'POST',
-                  headers: getHeaders(),
-                  body: JSON.stringify({ filename, content_type: mimeType }),
-          });
-
-          if (presignRes.ok) {
-                  const presignData = await presignRes.json();
-                  const uploadUrl = presignData.upload_url || presignData.url;
-                  const mediaId = presignData.media_id || presignData.id;
-
-                  if (uploadUrl) {
-                          const uploadRes = await fetch(uploadUrl, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': mimeType },
-                                  body: imageBuffer,
-                          });
-                          if (uploadRes.ok) {
-                                  console.log(`[Typefully] presigned 업로드 성공! ID: ${mediaId}`);
-                                  return mediaId;
-                          }
-                  }
-          }
-          console.warn(`[Typefully] presigned 업로드 실패`);
-    } catch (e2) {
-          console.warn(`[Typefully] presigned 에러: ${e2.message}`);
-    }
-
-    console.warn('[Typefully] 모든 미디어 업로드 실패 — 텍스트만 포스팅');
-    return null;
 }
 
 // ============================================================
