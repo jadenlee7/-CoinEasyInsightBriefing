@@ -246,47 +246,60 @@ export async function postToTypefully(imageUrl, caption) {
        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
        const imgBase64 = imgBuffer.toString('base64');
 
-     // Step 2: Typefully 미디어 업로드
-     const mediaRes = await fetch(`${TYPEFULLY_API}/v2/media`, {
-            method: 'POST',
-            headers: {
-                     'X-API-KEY': apiKey,
-                     'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                     file: imgBase64,
-                     file_name: 'figma-content.png',
-            }),
-     });
+     // Step 2: Typefully 미디어 업로드 (Typefully API v2)
+    const step1Res = await fetch(`${TYPEFULLY_API}/v2/social-sets/${TYPEFULLY_SOCIAL_SET_ID}/media/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ file_name: 'figma-content.png' }),
+    });
 
-     if (!mediaRes.ok) {
-            console.error(`[Typefully] 미디어 업로드 실패: ${mediaRes.status}`);
-            return false;
-     }
+    if (step1Res.status !== 201) {
+      const errText = await step1Res.text().catch(() => '');
+      console.error(`[Typefully] presigned URL 요청 실패: ${step1Res.status} ${errText}`);
+      return false;
+    }
 
-     const mediaData = await mediaRes.json();
-       const mediaId = mediaData.id;
-       console.log(`  📤 미디어 업로드: ${mediaId}`);
+    const { media_id: mediaId, upload_url: uploadUrl } = await step1Res.json();
+    console.log(`  📤 media_id 획득: ${mediaId}`);
 
-     // Step 3: 미디어 처리 대기 (최대 30초)
-     let mediaReady = false;
-       for (let i = 0; i < 10; i++) {
-              await new Promise(r => setTimeout(r, 3000));
-              const statusRes = await fetch(`${TYPEFULLY_API}/v2/media/${mediaId}`, {
-                       headers: { 'X-API-KEY': apiKey },
-              });
-              const statusData = await statusRes.json();
-              if (statusData.status === 'ready') {
-                       mediaReady = true;
-                       break;
-              }
-              console.log(`  ⏳ 미디어 처리 중... (${statusData.status})`);
-       }
+    // Step 2-2: S3에 직접 PUT (presigned URL이 모든 서명 포함, 추가 헤더 X)
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: imgBuffer,
+    });
 
-     if (!mediaReady) {
-            console.error('[Typefully] 미디어 처리 타임아웃');
-            return false;
-     }
+    if (!uploadRes.ok) {
+      console.error(`[Typefully] S3 PUT 실패: ${uploadRes.status}`);
+      return false;
+    }
+    console.log(`  ⏳ S3 업로드 완료, processing 대기 중...`);
+
+    // Step 3: 미디어 처리 대기 (최대 60초, 2초 간격)
+    let mediaReady = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const statusRes = await fetch(`${TYPEFULLY_API}/v2/social-sets/${TYPEFULLY_SOCIAL_SET_ID}/media/${mediaId}`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      if (!statusRes.ok) continue;
+      const statusData = await statusRes.json();
+      if (statusData.status === 'ready') {
+        mediaReady = true;
+        break;
+      }
+      if (statusData.status === 'failed') {
+        console.error(`[Typefully] 미디어 처리 실패: ${statusData.error_reason || 'unknown'}`);
+        return false;
+      }
+    }
+
+    if (!mediaReady) {
+      console.error('[Typefully] 미디어 처리 타임아웃 (60초)');
+      return false;
+    }
 
      // Step 4: 드래프트 생성 및 게시
      const draftRes = await fetch(
