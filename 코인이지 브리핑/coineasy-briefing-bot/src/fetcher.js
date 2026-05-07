@@ -19,6 +19,12 @@ const UPBIT_BASE = 'https://api.upbit.com/v1';
 const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
 // ============================================================
+// 캐시 (CoinGecko 429 rate limit 대비)
+// ============================================================
+let _cachedMarket = null;
+let _cachedGlobal = null;
+
+// ============================================================
 // 유틸리티
 // ============================================================
 async function fetchJSON(url, label = '', headers = {}) {
@@ -79,12 +85,18 @@ function formatKRW(n, decimals = 1) {
 // 1. 주요 코인 시세 (CoinGecko)
 // ============================================================
 async function fetchMarketOverview() {
-            const data = await fetchJSON(
+            const data = await fetchJSONWithRetry(
                             `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,ripple,sui&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
                             'CoinGecko Markets'
                         );
-            if (!data) return null;
-            return data.map(coin => ({
+            if (!data) {
+                        if (_cachedMarket) {
+                                    console.warn('[CoinGecko] 시세 실패 — 캐시 데이터 사용');
+                                    return _cachedMarket;
+                        }
+                        return null;
+            }
+            const result = data.map(coin => ({
                             symbol: coin.symbol.toUpperCase(),
                             name: coin.name,
                             price: coin.current_price,
@@ -93,22 +105,29 @@ async function fetchMarketOverview() {
                             marketCap: formatNum(coin.market_cap),
                             volume24h: formatNum(coin.total_volume),
             }));
+            _cachedMarket = result;
+            return result;
 }
 
 // ============================================================
 // 2. 글로벌 시장 데이터
 // ============================================================
 async function fetchGlobalData() {
-            const data = await fetchJSON(`${COINGECKO_BASE}/global`, 'CoinGecko Global');
-            if (!data?.data) return null;
+            const data = await fetchJSONWithRetry(`${COINGECKO_BASE}/global`, 'CoinGecko Global');
+            if (!data?.data) {
+                        if (_cachedGlobal) { console.warn('[CoinGecko] 글로벌 실패 — 캐시 사용'); return _cachedGlobal; }
+                        return null;
+            }
             const g = data.data;
-            return {
+            const result = {
                             totalMarketCap: formatNum(g.total_market_cap?.usd || 0),
                             totalVolume24h: formatNum(g.total_volume?.usd || 0),
                             btcDominance: g.market_cap_percentage?.btc?.toFixed(1) || '0',
                             ethDominance: g.market_cap_percentage?.eth?.toFixed(1) || '0',
                             marketCapChange24h: g.market_cap_change_percentage_24h_usd?.toFixed(2) || '0',
             };
+            _cachedGlobal = result;
+            return result;
 }
 
 // ============================================================
