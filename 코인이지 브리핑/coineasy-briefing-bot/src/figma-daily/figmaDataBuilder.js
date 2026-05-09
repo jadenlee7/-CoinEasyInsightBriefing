@@ -28,6 +28,9 @@ const COIN_IDS = {
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
+// CoinGecko 429 rate limit 대비 캐시
+let _priceCache = null;
+
 // ─── HTTP helpers ───────────────────────────────────────
 
 function sleep(ms) {
@@ -71,9 +74,11 @@ async function fetchPricesCoingecko() {
                     `https://api.coingecko.com/api/v3/simple/price` +
                     `?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
 
-    const data = await fetchJsonWithRetry(url, {}, 3, 3000);
+    try {
+        const data = await fetchJsonWithRetry(url, {}, 3, 5000);
+        if (!data) throw new Error('data is null');
 
-    const out = {};
+        const out = {};
         for (const [sym, gid] of Object.entries(COIN_IDS)) {
                     const d = data[gid] || {};
                     out[sym] = {
@@ -81,7 +86,21 @@ async function fetchPricesCoingecko() {
                                     change_24h: d.usd_24h_change || 0,
                     };
         }
+        _priceCache = out;
         return out;
+    } catch (e) {
+        console.warn(`[CoinGecko] 시세 실패 (${e.message})`);
+        if (_priceCache) {
+                    console.warn('[CoinGecko] 캐시 데이터 사용');
+                    return _priceCache;
+        }
+        // 캐시 없으면 기본값 반환 (crash 방지)
+        const fallback = {};
+        for (const sym of Object.keys(COIN_IDS)) {
+                    fallback[sym] = { price: 0, change_24h: 0 };
+        }
+        return fallback;
+    }
 }
 
 async function fetchFearGreed() {
