@@ -85,7 +85,7 @@ function formatKRW(n, decimals = 1) {
 // 1. 주요 코인 시세 (CoinGecko)
 // ============================================================
 async function fetchMarketOverview() {
-            const data = await fetchJSONWithRetry(
+            const data = await fetchJSON(
                             `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,ripple,sui&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
                             'CoinGecko Markets'
                         );
@@ -113,7 +113,7 @@ async function fetchMarketOverview() {
 // 2. 글로벌 시장 데이터
 // ============================================================
 async function fetchGlobalData() {
-            const data = await fetchJSONWithRetry(`${COINGECKO_BASE}/global`, 'CoinGecko Global');
+            const data = await fetchJSON(`${COINGECKO_BASE}/global`, 'CoinGecko Global');
             if (!data?.data) {
                         if (_cachedGlobal) { console.warn('[CoinGecko] 글로벌 실패 — 캐시 사용'); return _cachedGlobal; }
                         return null;
