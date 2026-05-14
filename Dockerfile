@@ -5,7 +5,7 @@ WORKDIR /app
 # Install FFmpeg, Python3, pip for Edge TTS, fonts, and node-canvas dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-        python3 \
+  20260514v2-push      python3 \
             python3-pip \
                 python3-venv \
                     fonts-noto-cjk \
