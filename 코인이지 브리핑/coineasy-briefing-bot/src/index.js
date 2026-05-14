@@ -14,6 +14,15 @@ import { sendTelegramMessage } from './telegram.js';
 import { exportFigmaBanner, sendTelegramPhoto } from './figma-banner.js';
 import { postBriefingToSocial } from './typefully-poster.js';
 
+// ─── Crash protection ────────────────────────────────
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Uncaught Exception:', err.message);
+  console.error(err.stack);
+});
+
 // ─── 환경변수 ──────────────────────────────────────────
 const CONFIG = {
   botToken: process.env.TELEGRAM_BOT_TOKEN,
