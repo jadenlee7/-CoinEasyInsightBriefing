@@ -5,7 +5,7 @@ WORKDIR /app
 # Install FFmpeg, Python3, pip for Edge TTS, fonts, and node-canvas dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-  20260514v2-push      python3 \
+        python3 \
             python3-pip \
                 python3-venv \
                     fonts-noto-cjk \
@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                         RUN pip3 install --break-system-packages edge-tts
 
                                                         # Cache bust: change this value to force a fresh build
-                                                        ARG CACHE_BUST=20260514v1-test
+                                                        ARG CACHE_BUST=20260514v3-dockerfile-fix
 
                                                         # Copy everything
                                                         COPY . /repo
