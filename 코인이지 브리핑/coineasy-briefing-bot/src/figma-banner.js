@@ -29,9 +29,8 @@ import { renderCanvasBanner, getTimeLabel } from './canvas-banner.js';
 // ============================================================
 const FIGMA_CONFIG = {
            token: process.env.FIGMA_TOKEN || '',
-           fileKey: process.env.FIGMA_FILE_KEY || 'hsRSASQjEMxl5NMLH9y5Wm',
-           frameId: process.env.FIGMA_FRAME_ID || '1812:1853',       // 데일리 배너 (EASY NEWS)
-           etfFrameId: process.env.FIGMA_ETF_FRAME_ID || '1812:1859', // ETF 배너 (SPOT ETFs)
+           fileKey: process.env.FIGMA_FILE_KEY || 'SRPoM0lDRtn61Q91sFWg1D',
+           frameId: process.env.FIGMA_FRAME_ID || '28334:14',
            scale: 2, // 2x 고해상도
 };
 
