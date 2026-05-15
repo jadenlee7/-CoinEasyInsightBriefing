@@ -6,8 +6,9 @@
  *
  * 환경변수:
  *   FIGMA_TOKEN  – Figma Personal Access Token
- *   FIGMA_FILE_KEY – Figma 파일 키 (기본: SRPoM0lDRtn61Q91sFWg1D)
- *   FIGMA_FRAME_ID – Export할 프레임 노드 ID (기본: 28334:14)
+ *   FIGMA_FILE_KEY – Figma 파일 키 (기본: hsRSASQjEMxl5NMLH9y5Wm)
+ *   FIGMA_FRAME_ID – 데일리 배너 노드 ID (기본: 1812:1853)
+ *   FIGMA_ETF_FRAME_ID – ETF 배너 노드 ID (기본: 1812:1859)
  *
  * collectAllData() 리턴 구조:
  *   data.market = [{symbol, name, price, change24h, change7d, marketCap, volume24h}, ...]
@@ -28,8 +29,9 @@ import { renderCanvasBanner, getTimeLabel } from './canvas-banner.js';
 // ============================================================
 const FIGMA_CONFIG = {
            token: process.env.FIGMA_TOKEN || '',
-           fileKey: process.env.FIGMA_FILE_KEY || 'SRPoM0lDRtn61Q91sFWg1D',
-           frameId: process.env.FIGMA_FRAME_ID || '28334:14',
+           fileKey: process.env.FIGMA_FILE_KEY || 'hsRSASQjEMxl5NMLH9y5Wm',
+           frameId: process.env.FIGMA_FRAME_ID || '1812:1853',       // 데일리 배너 (EASY NEWS)
+           etfFrameId: process.env.FIGMA_ETF_FRAME_ID || '1812:1859', // ETF 배너 (SPOT ETFs)
            scale: 2, // 2x 고해상도
 };
 
