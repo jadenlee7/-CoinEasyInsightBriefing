@@ -11,6 +11,36 @@
 
 const API_BASE = 'https://api.typefully.com';
 
+const THREADS_LIMIT = 500;
+
+// Threads는 포스트당 500자 제한 → 긴 본문을 여러 포스트(thread)로 분할.
+// 빈 줄 → 단일 줄 → 하드랩 순으로 자르고, 500자 이하면 원문 그대로 단일 포스트.
+function splitForThreads(text, limit = THREADS_LIMIT) {
+  const posts = [];
+  let buf = '';
+  const len = (x) => [...x].length;
+  const flush = () => { if (buf.trim()) posts.push(buf.trim()); buf = ''; };
+  for (const block of text.split('\n\n')) {
+    const cand = buf ? `${buf}\n\n${block}` : block;
+    if (len(cand) <= limit) { buf = cand; continue; }
+    flush();
+    if (len(block) <= limit) { buf = block; continue; }
+    for (const line of block.split('\n')) {
+      const c2 = buf ? `${buf}\n${line}` : line;
+      if (len(c2) <= limit) { buf = c2; continue; }
+      flush();
+      let rest = line;
+      while (len(rest) > limit) {
+        posts.push([...rest].slice(0, limit).join(''));
+        rest = [...rest].slice(limit).join('');
+      }
+      buf = rest;
+    }
+  }
+  flush();
+  return posts.length ? posts : [text];
+}
+
 // ============================================================
 // Typefully API 헬퍼
 // ============================================================
@@ -70,19 +100,18 @@ async function postToSocial(text, options = {}) {
   const platformsPayload = {};
 
   for (const platform of platforms) {
-        const post = { text };
+        const isThreads = platform === 'threads';
+        const chunks = isThreads ? splitForThreads(text) : [text];
+        const posts = chunks.map((chunk) => ({ text: chunk }));
+
+        // 미디어는 첫 포스트에만 (v1 = URL 문자열, v2 = ID)
         if (mediaIds && mediaIds.length > 0) {
-                // v1 API returns URL strings, v2 returns IDs
-                if (typeof mediaIds[0] === 'string' && mediaIds[0].startsWith('http')) {
-                        post.media_urls = mediaIds;
-                } else {
-                        post.media_ids = mediaIds;
-                }
+                const key = (typeof mediaIds[0] === 'string' && mediaIds[0].startsWith('http'))
+                        ? 'media_urls' : 'media_ids';
+                posts[0][key] = mediaIds;
         }
-        platformsPayload[platform] = {
-                enabled: true,
-                posts: [post],
-        };
+
+        platformsPayload[platform] = { enabled: true, posts };
   }
 
   // publish_at: ISO 8601 (Typefully v2 API 필드명)
