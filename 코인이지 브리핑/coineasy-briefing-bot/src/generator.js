@@ -271,7 +271,7 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-8',
       max_tokens: 2000,
       system: TELEGRAM_SYSTEM_PROMPT,
       messages: [
@@ -324,7 +324,7 @@ DeFi 상승: ${JSON.stringify(data.defi?.topGainers, null, 2)}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-8',
       max_tokens: 4000,
       system: BLOG_SYSTEM_PROMPT,
       messages: [
@@ -368,7 +368,7 @@ ${telegramBriefing}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-8',
       max_tokens: 500,
       system: X_POST_SYSTEM_PROMPT,
       messages: [
@@ -462,7 +462,7 @@ ${telegramBriefing}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-8',
       max_tokens: 1000,
       system: SHORTS_SYSTEM_PROMPT,
       messages: [

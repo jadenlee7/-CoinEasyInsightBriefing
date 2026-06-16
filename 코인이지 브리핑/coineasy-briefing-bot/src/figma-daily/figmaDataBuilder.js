@@ -303,7 +303,7 @@ async function generateQuote(marketSummary) {
                                                     'content-type': 'application/json',
                                 },
                                 body: JSON.stringify({
-                                                    model: 'claude-sonnet-4-6',
+                                                    model: 'claude-opus-4-8',
                                                     max_tokens: 300,
                                                     messages: [{ role: 'user', content: prompt }],
                                 }),
