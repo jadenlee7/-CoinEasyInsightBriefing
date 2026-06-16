@@ -10,54 +10,35 @@ const client = new Anthropic();
 // ============================================================
 // 텔레그램 브리핑 생성
 // ============================================================
-const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 공식 데일리 브리핑 에디터입니다.
-한국 크립토 커뮤니티(10만+)를 위한 매일 아침 시황 브리핑을 작성합니다.
+const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 데일리 브리핑 에디터입니다.
+한국 크립토 커뮤니티를 위한 짧고 핵심적인 시황 브리핑을 작성합니다.
+이 브리핑은 배너 사진의 캡션으로 들어가므로 반드시 짧아야 합니다.
+
+## 최우선 규칙 — 길이
+- **전체 700자 이내 (공백 포함). 절대 800자 넘기지 말 것.**
+- 유저가 스크롤 없이 한눈에 스캔할 수 있는 분량
 
 ## 톤 & 스타일
-- 친근하지만 전문적인 한국어 (반말 OK, 하지만 멸시하는 톤은 NO)
-- 이모지 최소화: 섹션 제목에만 1개씩 사용. 본문 텍스트 안에 이모지 넣지 말 것 (🔥, 💪, 📈 등 인라인 이모지 금지)
-- 숫자는 반드시 포함 (구체적 데이터 기반)
-- 짧고 깔끔한 문장. 불필요한 감탄사나 과장 표현 자제
-- 텔레그램 Markdown 포맷 사용 (*볼드*, _이탤릭_)
-- **절대 금지**: ## 또는 # 마크다운 헤더 사용 금지. 섹션 제목은 이모지로만 표시 (예: "📊 주요 시세", "🔥 김치 프리미엄")
+- 간결한 한국어. 군더더기 없이 핵심만
+- 이모지는 섹션 제목에만 1개씩. 본문엔 이모지 금지
+- 텔레그램 Markdown (*볼드*)만 사용
+- ## 또는 # 마크다운 헤더 금지
 
-## 구조 (아래 순서 엄수)
-1. 🌅 헤드라인 인사 (날짜 + 한 줄 시황 요약)
-2. 📊 주요 시세 (BTC, ETH, SOL 등 - 가격 + 등락률)
-3. 📈 ETF 자금 흐름 (BTC/ETH ETF 순유입·유출 + 주요 펀드별 흐름)
-4. 🇰🇷 한국 시장 포커스 (업비트 거래대금 TOP3 + 김치 프리미엄 + 김프 이상치)
-5. 😱 공포/탐욕 지수
-6. 💎 DeFi 핫이슈 (TVL 변동 주목할 프로토콜 2-3개)
-7. 🚀 트렌딩 코인 TOP 3
-8. 🧠 오늘의 인사이트 (데이터 기반 시장 해석 1-2줄)
-9. ✅ 오늘의 액션 아이템 (2-3개 구체적 체크리스트)
-10. 마무리: "코인이지와 함께 오늘도 이지하게! 🫡"
-
-## 액션 아이템 작성 가이드
-- 데이터에 기반한 구체적이고 실행 가능한 항목
-- 투자 추천이 아닌 "확인/점검/모니터링" 관점
-- 예시:
-  * 공포 구간 -> "포트폴리오 리밸런싱 시점 검토해보기"
-  * 김프 3% 이상 -> "해외 거래소 가격 비교 체크"
-  * BTC 큰 변동 -> "스탑로스/익절 라인 재확인"
-  * 트렌딩 코인 급등 -> "해당 프로젝트 펀더멘탈 리서치"
-  * 탐욕 구간 -> "레버리지 포지션 리스크 점검"
-  * DeFi TVL 급변 -> "사용 중인 프로토콜 상태 확인"
-* ETF 대규모 순유입 -> "기관 자금 흐름 방향 확인, BTC 가격 연동 체크"
-* ETF 순유출 지속 -> "단기 매도 압력 가능성, 리스크 관리 점검"
-* 특정 ETF 급변 -> "해당 펀드 뉴스/이슈 리서치"
+## 구조 (간결하게, 각 섹션 1-3줄)
+🌅 [날짜] + 한 줄 시황 요약
+📊 *시세*: BTC/ETH/SOL/XRP/SUI — 가격 + 24h 등락률만 (한 줄에 2개씩 압축, 7일·시총·거래량 생략)
+😨 *심리*: 공포탐욕 [값(라벨)] · 김프 [%] (한 줄)
+🔥 *트렌딩*: TOP3 심볼 + 24h 등락률 (한 줄)
+💡 *인사이트*: 데이터 기반 한 줄 해석
 
 ## 중요 규칙
-- 전체 길이: 텔레그램 1개 메시지에 들어가도록 (최대 2000자)
-- 투자 추천 절대 금지 (정보 전달 + 체크리스트 관점만)
-- 데이터가 없는 섹션은 자연스럽게 스킵
-- 한국 시장 포커스 섹션은 한국 투자자에게 매우 중요하므로 반드시 포함 (업비트 거래대금 TOP3 + 김프 + 이상치)
-- 업비트 거래대금 TOP3은 데이터에 주어진 순서 그대로 사용할 것
-- 김프 이상치(절대값 5% 이상)가 있으면 "차익거래 주의" 관점으로 간단히 멘션
-- 액션 아이템은 "~해보기", "~확인하기", "~점검하기" 형태로 부담 없이
-- **절대 금지**: 텔레그램 URL, X URL, 채팅방/공지방/소통방 링크, 해시태그, ## 마크다운 헤더 추가 금지 (코드가 자동으로 footer 붙임)
-- **트렌딩 코인**: 데이터에 주어진 TOP 3 코인만 그 순서 그대로 사용할 것. 다른 코인을 임의로 추가하거나 순서를 바꾸면 안됨
-- 마지막 줄은 반드시 "코인이지와 함께 오늘도 이지하게! 🫡"로 끝낼 것 (그 이후 아무것도 추가 금지)`;
+- 700자 이내 엄수 (이게 가장 중요)
+- 투자 추천 절대 금지 (정보 전달만)
+- 데이터 없는 섹션은 스킵
+- 트렌딩은 주어진 TOP3만 순서대로
+- ETF/한국시장 TOP3/액션아이템 섹션은 길어지므로 생략 (인사이트 한 줄에 핵심만 녹일 것)
+- **절대 금지**: URL, 채팅방/공지방/소통방 링크, 해시태그, ## 헤더 추가 금지 (코드가 footer 붙임)
+- 마지막 줄은 "코인이지와 함께 오늘도 이지하게! 🫡"로 끝낼 것 (그 이후 아무것도 추가 금지)`;
 
 
 const BLOG_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 네이버 블로그 콘텐츠 에디터입니다.
@@ -126,58 +107,39 @@ function fmtPctFallback(v) {
 }
 
 function buildFallbackTelegramBriefing(data) {
+  // 컴팩트 버전 (배너 캡션용, 700자 이내)
   const lines = [];
   const dateStr = data.dateKST || new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
-  lines.push(`🌅 ${dateStr} 코인이지 데일리 브리핑`);
+  lines.push(`🌅 ${dateStr} 코인이지 브리핑`);
   lines.push('');
 
-  // 주요 시세
+  // 시세 (한 줄에 2개씩 압축, 24h만)
   if (data.market && data.market.length) {
-    lines.push('📊 *주요 시세*');
-    for (const c of data.market) {
+    lines.push('📊 *시세*');
+    const cells = data.market.map(c => {
       const price = typeof c.price === 'number' ? `$${c.price.toLocaleString()}` : `$${c.price}`;
-      lines.push(`• ${c.symbol}: ${price} (24h ${fmtPctFallback(c.change24h)})`);
-    }
-    lines.push('');
-  }
-
-  // ETF 자금 흐름
-  if (data.etf && (data.etf.btc || data.etf.eth)) {
-    lines.push('📈 *ETF 자금 흐름*');
-    if (data.etf.btc?.totalFlow != null) lines.push(`• BTC ETF: ${data.etf.btc.totalFlow}M (${data.etf.btc.flowDirection || ''})`);
-    if (data.etf.eth?.totalFlow != null) lines.push(`• ETH ETF: ${data.etf.eth.totalFlow}M (${data.etf.eth.flowDirection || ''})`);
-    lines.push('');
-  }
-
-  // 김치 프리미엄
-  if (data.kimchi) {
-    lines.push('🔥 *김치 프리미엄*');
-    lines.push(`환율: ₩${data.kimchi.krwRate}/USDT | 프리미엄: ${fmtPctFallback(data.kimchi.premium)}`);
-    lines.push('');
-  }
-
-  // 공포/탐욕 지수
-  if (data.fearGreed) {
-    lines.push('😱 *공포/탐욕 지수*');
-    lines.push(`${data.fearGreed.value} (${data.fearGreed.label})`);
-    lines.push('');
-  }
-
-  // DeFi 핫이슈 (상승 TOP)
-  if (data.defi?.topGainers?.length) {
-    lines.push('💎 *DeFi 핫이슈*');
-    for (const p of data.defi.topGainers.slice(0, 3)) {
-      lines.push(`• ${p.name}: ${fmtPctFallback(p.change1d)} (TVL ${p.tvl})`);
-    }
-    lines.push('');
-  }
-
-  // 트렌딩 TOP 3
-  if (data.trending?.length) {
-    lines.push('🚀 *트렌딩 TOP 3*');
-    data.trending.slice(0, 3).forEach((c, i) => {
-      lines.push(`${i + 1}. ${c.symbol} (${c.name}): ${fmtPctFallback(c.priceChange24h)}`);
+      return `${c.symbol} ${price} ${fmtPctFallback(c.change24h)}`;
     });
+    for (let i = 0; i < cells.length; i += 2) {
+      lines.push(cells.slice(i, i + 2).join(' | '));
+    }
+    lines.push('');
+  }
+
+  // 심리 (공포탐욕 + 김프 한 줄)
+  const sentiment = [];
+  if (data.fearGreed) sentiment.push(`공포탐욕 ${data.fearGreed.value} (${data.fearGreed.label})`);
+  if (data.kimchi) sentiment.push(`김프 ${fmtPctFallback(data.kimchi.premium)}`);
+  if (sentiment.length) {
+    lines.push('😨 *심리*');
+    lines.push(sentiment.join(' · '));
+    lines.push('');
+  }
+
+  // 트렌딩 TOP 3 (한 줄)
+  if (data.trending?.length) {
+    lines.push('🔥 *트렌딩*');
+    lines.push(data.trending.slice(0, 3).map(c => `${c.symbol} ${fmtPctFallback(c.priceChange24h)}`).join(' · '));
     lines.push('');
   }
 
@@ -272,12 +234,12 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
   try {
     const response = await client.messages.create({
       model: 'claude-opus-4-8',
-      max_tokens: 2000,
+      max_tokens: 800,
       system: TELEGRAM_SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
-          content: `아래 데이터를 기반으로 오늘의 텔레그램 데일리 브리핑을 작성해줘.\nETF 자금 흐름 데이터가 있으면 반드시 포함하고, 인사이트와 액션 아이템은 데이터에서 유의미한 패턴을 찾아서 작성해.\n\n${dataPrompt}`,
+          content: `아래 데이터를 기반으로 컴팩트한 텔레그램 데일리 브리핑을 작성해줘.\n반드시 700자 이내로, 시세/심리/트렌딩/인사이트만 짧게. 유저가 한눈에 보기 좋게.\n\n${dataPrompt}`,
         },
       ],
     });
