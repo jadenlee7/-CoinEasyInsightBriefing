@@ -109,6 +109,83 @@ const X_POST_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 X(Twitter) �
 자세한 브리핑은 텔레그램에서 👉 @coiniseasy"`;
 
 
+// 공통 footer (공지방/소통방/X 링크 + 해시태그)
+const BRIEFING_FOOTER = '\n\n' +
+  '📢 [공지방](https://t.me/coiniseasy) | 💬 [소통방](https://t.me/coineasy_official) | 🐦 [X](https://twitter.com/Coiniseasy)\n\n' +
+  '#이지에드 #EasyEd #CoinEasy #이지브리핑';
+
+// ============================================================
+// 데이터 기반 fallback 브리핑 (AI 호출 실패 시)
+// 배너와 동일하게 data만으로 만들어서 텍스트가 항상 발송되도록 보장
+// ============================================================
+function fmtPctFallback(v) {
+  if (v == null || v === '') return 'N/A';
+  const n = parseFloat(v);
+  if (isNaN(n)) return 'N/A';
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
+}
+
+function buildFallbackTelegramBriefing(data) {
+  const lines = [];
+  const dateStr = data.dateKST || new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+  lines.push(`🌅 ${dateStr} 코인이지 데일리 브리핑`);
+  lines.push('');
+
+  // 주요 시세
+  if (data.market && data.market.length) {
+    lines.push('📊 *주요 시세*');
+    for (const c of data.market) {
+      const price = typeof c.price === 'number' ? `$${c.price.toLocaleString()}` : `$${c.price}`;
+      lines.push(`• ${c.symbol}: ${price} (24h ${fmtPctFallback(c.change24h)})`);
+    }
+    lines.push('');
+  }
+
+  // ETF 자금 흐름
+  if (data.etf && (data.etf.btc || data.etf.eth)) {
+    lines.push('📈 *ETF 자금 흐름*');
+    if (data.etf.btc?.totalFlow != null) lines.push(`• BTC ETF: ${data.etf.btc.totalFlow}M (${data.etf.btc.flowDirection || ''})`);
+    if (data.etf.eth?.totalFlow != null) lines.push(`• ETH ETF: ${data.etf.eth.totalFlow}M (${data.etf.eth.flowDirection || ''})`);
+    lines.push('');
+  }
+
+  // 김치 프리미엄
+  if (data.kimchi) {
+    lines.push('🔥 *김치 프리미엄*');
+    lines.push(`환율: ₩${data.kimchi.krwRate}/USDT | 프리미엄: ${fmtPctFallback(data.kimchi.premium)}`);
+    lines.push('');
+  }
+
+  // 공포/탐욕 지수
+  if (data.fearGreed) {
+    lines.push('😱 *공포/탐욕 지수*');
+    lines.push(`${data.fearGreed.value} (${data.fearGreed.label})`);
+    lines.push('');
+  }
+
+  // DeFi 핫이슈 (상승 TOP)
+  if (data.defi?.topGainers?.length) {
+    lines.push('💎 *DeFi 핫이슈*');
+    for (const p of data.defi.topGainers.slice(0, 3)) {
+      lines.push(`• ${p.name}: ${fmtPctFallback(p.change1d)} (TVL ${p.tvl})`);
+    }
+    lines.push('');
+  }
+
+  // 트렌딩 TOP 3
+  if (data.trending?.length) {
+    lines.push('🚀 *트렌딩 TOP 3*');
+    data.trending.slice(0, 3).forEach((c, i) => {
+      lines.push(`${i + 1}. ${c.symbol} (${c.name}): ${fmtPctFallback(c.priceChange24h)}`);
+    });
+    lines.push('');
+  }
+
+  lines.push('코인이지와 함께 오늘도 이지하게! 🫡');
+  return lines.join('\n');
+}
+
+
 export async function generateTelegramBriefing(data) {
   console.log('[브리핑 생성] 텔레그램 브리핑 작성 중...');
 
@@ -206,16 +283,18 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
     });
 
     const text = response.content[0]?.text || '';
-    // 푸터: 공지방/소통방/X 링크 + 해시태그
-    const footer = '\n\n' +
-      '📢 [공지방](https://t.me/coiniseasy) | 💬 [소통방](https://t.me/coineasy_official) | 🐦 [X](https://twitter.com/Coiniseasy)\n\n' +
-      '#이지에드 #EasyEd #CoinEasy #이지브리핑';
-    const withFooter = text + footer;
+    if (!text.trim()) {
+      // AI가 빈 응답 → fallback
+      console.warn('[브리핑 생성] AI 빈 응답 — fallback 브리핑 사용');
+      return buildFallbackTelegramBriefing(data) + BRIEFING_FOOTER;
+    }
+    const withFooter = text + BRIEFING_FOOTER;
     console.log(`[브리핑 생성] 텔레그램 완료 (${withFooter.length}자)`);
     return withFooter;
   } catch (err) {
-    console.error(`[브리핑 생성 에러] ${err.message}`);
-    return null;
+    console.error(`[브리핑 생성 에러] ${err.message} — fallback 브리핑 사용`);
+    // AI 실패 시 데이터 기반 fallback 브리핑 발송 (텍스트 누락 방지)
+    return buildFallbackTelegramBriefing(data) + BRIEFING_FOOTER;
   }
 }
 
