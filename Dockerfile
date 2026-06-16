@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                         RUN pip3 install --break-system-packages edge-tts
 
                                                         # Cache bust: change this value to force a fresh build
-                                                        ARG CACHE_BUST=20260617v5-compact-combined
+                                                        ARG CACHE_BUST=20260617v6-binance-noemoji
 
                                                         # Copy everything
                                                         COPY . /repo
