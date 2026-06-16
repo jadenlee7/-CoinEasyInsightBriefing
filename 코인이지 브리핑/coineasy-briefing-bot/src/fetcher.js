@@ -84,29 +84,71 @@ function formatKRW(n, decimals = 1) {
 // ============================================================
 // 1. 주요 코인 시세 (CoinGecko)
 // ============================================================
+const COIN_NAMES = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', XRP: 'XRP', SUI: 'Sui' };
+
+// Binance 백업 시세 소스 (CoinGecko 실패 시) — 무료, rate limit 거의 없음
+async function fetchMarketFromBinance() {
+            try {
+                            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'SUIUSDT'];
+                            const url = `${BINANCE_BASE}/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbols))}`;
+                            const data = await fetchJSON(url, 'Binance 24hr Markets');
+                            if (!Array.isArray(data)) return null;
+                            const bySym = {};
+                            for (const t of data) bySym[t.symbol.replace('USDT', '')] = t;
+                            const order = ['BTC', 'ETH', 'SOL', 'XRP', 'SUI'];
+                            const result = order.filter(s => bySym[s]).map(sym => {
+                                                const t = bySym[sym];
+                                                return {
+                                                                        symbol: sym,
+                                                                        name: COIN_NAMES[sym] || sym,
+                                                                        price: parseFloat(t.lastPrice),
+                                                                        change24h: parseFloat(t.priceChangePercent).toFixed(2),
+                                                                        change7d: '0',
+                                                                        marketCap: 'N/A',
+                                                                        volume24h: formatNum(parseFloat(t.quoteVolume)),
+                                                };
+                            });
+                            return result.length ? result : null;
+            } catch (e) {
+                            console.error(`[Binance Markets 에러] ${e.message}`);
+                            return null;
+            }
+}
+
 async function fetchMarketOverview() {
             const data = await fetchJSON(
                             `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,ripple,sui&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
                             'CoinGecko Markets'
                         );
-            if (!data) {
-                        if (_cachedMarket) {
-                                    console.warn('[CoinGecko] 시세 실패 — 캐시 데이터 사용');
-                                    return _cachedMarket;
-                        }
-                        return null;
+            if (data) {
+                        const result = data.map(coin => ({
+                                        symbol: coin.symbol.toUpperCase(),
+                                        name: coin.name,
+                                        price: coin.current_price,
+                                        change24h: coin.price_change_percentage_24h?.toFixed(2) || '0',
+                                        change7d: coin.price_change_percentage_7d_in_currency?.toFixed(2) || '0',
+                                        marketCap: formatNum(coin.market_cap),
+                                        volume24h: formatNum(coin.total_volume),
+                        }));
+                        _cachedMarket = result;
+                        return result;
             }
-            const result = data.map(coin => ({
-                            symbol: coin.symbol.toUpperCase(),
-                            name: coin.name,
-                            price: coin.current_price,
-                            change24h: coin.price_change_percentage_24h?.toFixed(2) || '0',
-                            change7d: coin.price_change_percentage_7d_in_currency?.toFixed(2) || '0',
-                            marketCap: formatNum(coin.market_cap),
-                            volume24h: formatNum(coin.total_volume),
-            }));
-            _cachedMarket = result;
-            return result;
+
+            // CoinGecko 실패 → Binance 백업
+            console.warn('[CoinGecko] 시세 실패 — Binance 백업 시도');
+            const binance = await fetchMarketFromBinance();
+            if (binance) {
+                        console.log('[시세] Binance 백업 사용 (가격 정상)');
+                        _cachedMarket = binance;
+                        return binance;
+            }
+
+            // 둘 다 실패 → 캐시
+            if (_cachedMarket) {
+                        console.warn('[시세] CoinGecko+Binance 실패 — 캐시 데이터 사용');
+                        return _cachedMarket;
+            }
+            return null;
 }
 
 // ============================================================

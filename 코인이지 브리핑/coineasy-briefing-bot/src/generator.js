@@ -20,16 +20,16 @@ const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 데일리 
 
 ## 톤 & 스타일
 - 간결한 한국어. 군더더기 없이 핵심만
-- 이모지는 섹션 제목에만 1개씩. 본문엔 이모지 금지
+- **이모지 사용 절대 금지** (제목·본문 어디에도 이모지 넣지 말 것). 섹션 제목은 *볼드* 텍스트로만 구분
 - 텔레그램 Markdown (*볼드*)만 사용
 - ## 또는 # 마크다운 헤더 금지
 
-## 구조 (간결하게, 각 섹션 1-3줄)
-🌅 [날짜] + 한 줄 시황 요약
-📊 *시세*: BTC/ETH/SOL/XRP/SUI — 가격 + 24h 등락률만 (한 줄에 2개씩 압축, 7일·시총·거래량 생략)
-😨 *심리*: 공포탐욕 [값(라벨)] · 김프 [%] (한 줄)
-🔥 *트렌딩*: TOP3 심볼 + 24h 등락률 (한 줄)
-💡 *인사이트*: 데이터 기반 한 줄 해석
+## 구조 (간결하게, 각 섹션 1-3줄, 이모지 없이)
+[날짜] + 한 줄 시황 요약
+*시세*: BTC/ETH/SOL/XRP/SUI — 가격 + 24h 등락률만 (한 줄에 2개씩 압축, 7일·시총·거래량 생략)
+*심리*: 공포탐욕 [값(라벨)] · 김프 [%] (한 줄)
+*트렌딩*: TOP3 심볼 + 24h 등락률 (한 줄)
+*인사이트*: 데이터 기반 한 줄 해석
 
 ## 중요 규칙
 - 700자 이내 엄수 (이게 가장 중요)
@@ -38,7 +38,7 @@ const TELEGRAM_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 데일리 
 - 트렌딩은 주어진 TOP3만 순서대로
 - ETF/한국시장 TOP3/액션아이템 섹션은 길어지므로 생략 (인사이트 한 줄에 핵심만 녹일 것)
 - **절대 금지**: URL, 채팅방/공지방/소통방 링크, 해시태그, ## 헤더 추가 금지 (코드가 footer 붙임)
-- 마지막 줄은 "코인이지와 함께 오늘도 이지하게! 🫡"로 끝낼 것 (그 이후 아무것도 추가 금지)`;
+- 마지막 줄은 "코인이지와 함께 오늘도 이지하게!"로 끝낼 것 (이모지 없이, 그 이후 아무것도 추가 금지)`;
 
 
 const BLOG_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 네이버 블로그 콘텐츠 에디터입니다.
@@ -90,9 +90,9 @@ const X_POST_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 X(Twitter) �
 자세한 브리핑은 텔레그램에서 👉 @coiniseasy"`;
 
 
-// 공통 footer (공지방/소통방/X 링크 + 해시태그)
+// 공통 footer (공지방/소통방/X 링크 + 해시태그) — 이모지 없이
 const BRIEFING_FOOTER = '\n\n' +
-  '📢 [공지방](https://t.me/coiniseasy) | 💬 [소통방](https://t.me/coineasy_official) | 🐦 [X](https://twitter.com/Coiniseasy)\n\n' +
+  '[공지방](https://t.me/coiniseasy) | [소통방](https://t.me/coineasy_official) | [X](https://twitter.com/Coiniseasy)\n\n' +
   '#이지에드 #EasyEd #CoinEasy #이지브리핑';
 
 // ============================================================
@@ -107,15 +107,15 @@ function fmtPctFallback(v) {
 }
 
 function buildFallbackTelegramBriefing(data) {
-  // 컴팩트 버전 (배너 캡션용, 700자 이내)
+  // 컴팩트 버전 (배너 캡션용, 700자 이내, 이모지 없이)
   const lines = [];
   const dateStr = data.dateKST || new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
-  lines.push(`🌅 ${dateStr} 코인이지 브리핑`);
+  lines.push(`*${dateStr} 코인이지 브리핑*`);
   lines.push('');
 
   // 시세 (한 줄에 2개씩 압축, 24h만)
   if (data.market && data.market.length) {
-    lines.push('📊 *시세*');
+    lines.push('*시세*');
     const cells = data.market.map(c => {
       const price = typeof c.price === 'number' ? `$${c.price.toLocaleString()}` : `$${c.price}`;
       return `${c.symbol} ${price} ${fmtPctFallback(c.change24h)}`;
@@ -131,19 +131,17 @@ function buildFallbackTelegramBriefing(data) {
   if (data.fearGreed) sentiment.push(`공포탐욕 ${data.fearGreed.value} (${data.fearGreed.label})`);
   if (data.kimchi) sentiment.push(`김프 ${fmtPctFallback(data.kimchi.premium)}`);
   if (sentiment.length) {
-    lines.push('😨 *심리*');
-    lines.push(sentiment.join(' · '));
+    lines.push('*심리* ' + sentiment.join(' · '));
     lines.push('');
   }
 
   // 트렌딩 TOP 3 (한 줄)
   if (data.trending?.length) {
-    lines.push('🔥 *트렌딩*');
-    lines.push(data.trending.slice(0, 3).map(c => `${c.symbol} ${fmtPctFallback(c.priceChange24h)}`).join(' · '));
+    lines.push('*트렌딩* ' + data.trending.slice(0, 3).map(c => `${c.symbol} ${fmtPctFallback(c.priceChange24h)}`).join(' · '));
     lines.push('');
   }
 
-  lines.push('코인이지와 함께 오늘도 이지하게! 🫡');
+  lines.push('코인이지와 함께 오늘도 이지하게!');
   return lines.join('\n');
 }
 
