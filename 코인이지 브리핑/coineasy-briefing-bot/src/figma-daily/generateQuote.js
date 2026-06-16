@@ -21,7 +21,7 @@ export async function generateDailyQuote(data) {
           const userMsg = `오늘 시장: BTC $${data.btcPrice} (${data.btcChange24h}%), 공포탐욕 ${data.fearGreedValue} (${data.fearGreedLabel}), 김프 ${data.kimchiPremium}%`;
 
       const response = await client.messages.create({
-              model: 'claude-sonnet-4-20250514',
+              model: 'claude-opus-4-8',
               max_tokens: 200,
               system: QUOTE_PROMPT,
               messages: [{ role: 'user', content: userMsg }],
