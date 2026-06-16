@@ -42,7 +42,11 @@ function getSession(now) {
 // ─── Markdown → HTML 변환 ──────────────────────────────
 function markdownToHtml(text) {
   return text
-    // [text](url) → <a href="url">text</a> (hyperlink)
+    // 1) HTML 특수문자 먼저 이스케이프 (예: "Fear & Greed" 파싱 깨짐 방지)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // 2) Markdown → HTML 태그
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
     .replace(/\*([^*]+)\*/g, '<b>$1</b>')
     .replace(/_([^_]+)_/g, '<i>$1</i>')
@@ -82,7 +86,9 @@ async function runBriefingPipeline() {
       console.error('  ❌ 브리핑 생성 실패');
     }
 
-    // Step 3: 배너 이미지 생성 + 브리핑 캡션으로 합쳐서 한 포스트로 전송
+    // Step 3: 배너 이미지 발송 + 브리핑 텍스트 발송 (별도 메시지)
+    // 텔레그램 캡션은 1024자 제한 → 브리핑(~2000자)을 캡션에 넣으면 잘림.
+    // 그래서 배너 사진(캡션 없이) + 전체 브리핑을 별도 메시지로 발송한다.
     console.log('\n🎨 Step 3: 배너 이미지 생성 + 포스팅...');
     const targetChatId = CONFIG.channelId || CONFIG.chatId;
     let savedBannerBuffer = null;  // Step 4 Typefully에서도 사용
@@ -92,32 +98,27 @@ async function runBriefingPipeline() {
         console.log(`  ✅ 배너 생성 완료 (${(bannerResult.size / 1024).toFixed(1)}KB)`);
         savedBannerBuffer = bannerResult.buffer;
         if (targetChatId && CONFIG.botToken) {
-          // 배너 이미지 + 텍스트 브리핑을 캡션으로 합쳐서 하나의 포스트로 전송
-          const caption = briefingText || null;
+          // 1) 배너 이미지 발송 (캡션 없이)
           const photoSent = await sendTelegramPhoto(
             bannerResult.buffer,
-            caption,
+            null,
             targetChatId,
             CONFIG.botToken
           );
-          console.log(`  ${photoSent ? '✅' : '❌'} 배너+브리핑 합쳐서 공지방 발송`);
+          console.log(`  ${photoSent ? '✅' : '❌'} 배너 이미지 공지방 발송`);
         }
       } else {
         console.log('  ⚠️ 배너 생성 실패 — 텍스트만 발송');
-        if (briefingText && targetChatId && CONFIG.botToken) {
-          const htmlBriefing = markdownToHtml(briefingText);
-          await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
-          console.log('  ✅ 텍스트 브리핑만 공지방 발송');
-        }
       }
     } catch (bannerErr) {
       console.error(`  ⚠️ 배너 에러: ${bannerErr.message}`);
-      // 배너 실패 시 텍스트만 발송
-      if (briefingText && targetChatId && CONFIG.botToken) {
-        const htmlBriefing = markdownToHtml(briefingText);
-        await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
-        console.log('  ✅ 텍스트 브리핑만 공지방 발송 (배너 fallback)');
-      }
+    }
+
+    // 2) 전체 브리핑 텍스트 발송 (배너 성공 여부와 무관하게 항상 발송)
+    if (briefingText && targetChatId && CONFIG.botToken) {
+      const htmlBriefing = markdownToHtml(briefingText);
+      const textSent = await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
+      console.log(`  ${textSent ? '✅' : '❌'} 브리핑 텍스트 공지방 발송`);
     }
 
     // Step 4: Typefully 소셜 포스팅 (X + LinkedIn + Threads)
