@@ -248,7 +248,7 @@ function buildPayloadFromData(data) {
     kimchi_note: kimchiNote(premiumPct),
     fear_value: String(fg?.value ?? '--'),
     fear_label: fg?.label || '--',
-    fear_note: fearNote(fearValue, avgChange),
+    fear_note: '두려움인데 가격은 상승? 역설적 신호!',  // Figma 템플릿 정적 텍스트와 일치
     defi_1_name: defiItems[0].name,
     defi_1_note: defiItems[0].tvl ? `TVL ${defiItems[0].tvl}` : '',
     defi_1_change: fmtPct(defiItems[0].change1d),
@@ -264,8 +264,8 @@ function buildPayloadFromData(data) {
     trend_2_change: fmtPct(trendItems[1].priceChange24h),
     trend_3_name: `${trendItems[2].symbol} (${trendItems[2].name})`,
     trend_3_change: fmtPct(trendItems[2].priceChange24h),
-    quote_line1: '코인이지와 함께 오늘도 이지하게',
-    quote_line2: '시장을 읽고, 기회를 잡자',
+    quote_line1: 'Fear 구간에서 상승하는 시장...',
+    quote_line2: '때로는 군중심리와 반대로 가는 게 정답이지',
   };
 
   const changeKeys = [
