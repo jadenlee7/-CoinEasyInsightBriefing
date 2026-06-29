@@ -354,35 +354,76 @@ const TEXT_OVERLAYS = [
 // ============================================================
 // Figma REST API: 프레임을 PNG로 Export
 // ============================================================
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Figma API 한 번 시도 (실패 사유를 그대로 throw)
+async function tryFetchFigmaPNGOnce() {
+           const nodeId = FIGMA_CONFIG.frameId;
+           const imageUrl = `${FIGMA_API}/images/${FIGMA_CONFIG.fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=${FIGMA_CONFIG.scale}`;
+           const imageRes = await fetch(imageUrl, {
+                        headers: { 'X-Figma-Token': FIGMA_CONFIG.token },
+                        signal: AbortSignal.timeout(30000),  // Figma 렌더링이 느릴 수 있음 → 30초
+           });
+           if (!imageRes.ok) {
+                        const errText = await imageRes.text();
+                        // 429(rate limit), 5xx(서버 일시 오류) → 재시도 가능
+                        const retryable = imageRes.status === 429 || imageRes.status >= 500;
+                        const e = new Error(`Figma API ${imageRes.status}: ${errText.slice(0, 200)}`);
+                        e.retryable = retryable;
+                        throw e;
+           }
+           const imageData = await imageRes.json();
+           if (imageData.err) {
+                        // "rendering" 등 일시적 오류는 재시도 가능
+                        const e = new Error(`Figma API error: ${imageData.err}`);
+                        e.retryable = true;
+                        throw e;
+           }
+           const pngUrl = (imageData.images || {})[nodeId];
+           if (!pngUrl) {
+                        // 아직 렌더링 중이면 URL이 null → 재시도하면 채워짐
+                        const e = new Error('Figma 이미지 URL 미수신 (렌더링 중일 수 있음)');
+                        e.retryable = true;
+                        throw e;
+           }
+           const pngRes = await fetch(pngUrl, { signal: AbortSignal.timeout(30000) });
+           if (!pngRes.ok) {
+                        const e = new Error(`PNG 다운로드 실패: ${pngRes.status}`);
+                        e.retryable = pngRes.status === 429 || pngRes.status >= 500;
+                        throw e;
+           }
+           return Buffer.from(await pngRes.arrayBuffer());
+}
+
+// 재시도 래퍼: 최대 4회, 지수 백오프 (2s → 4s → 8s)
 async function fetchFigmaPNG() {
            if (!FIGMA_CONFIG.token) {
                         console.log('  ⚠️ FIGMA_TOKEN 미설정 — 배너 Export 스킵');
                         return null;
            }
-           try {
-                        console.log('  🎨 Figma API: 배너 이미지 요청 중...');
-                        const nodeId = FIGMA_CONFIG.frameId;
-                        const imageUrl = `${FIGMA_API}/images/${FIGMA_CONFIG.fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=${FIGMA_CONFIG.scale}`;
-                        const imageRes = await fetch(imageUrl, {
-                                       headers: { 'X-Figma-Token': FIGMA_CONFIG.token },
-                        });
-                        if (!imageRes.ok) {
-                                       const errText = await imageRes.text();
-                                       throw new Error(`Figma API ${imageRes.status}: ${errText}`);
+           const MAX_ATTEMPTS = 4;
+           let lastErr = null;
+           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                        try {
+                                       console.log(`  🎨 Figma API: 배너 이미지 요청 중... (시도 ${attempt}/${MAX_ATTEMPTS})`);
+                                       const buf = await tryFetchFigmaPNGOnce();
+                                       console.log(`  ✅ Figma PNG 수신 완료 (${(buf.length / 1024).toFixed(1)}KB)`);
+                                       return buf;
+                        } catch (err) {
+                                       lastErr = err;
+                                       const isLast = attempt === MAX_ATTEMPTS;
+                                       // 재시도 불가(인증 401/403, 404 등) 또는 마지막 시도면 중단
+                                       if (err.retryable === false || isLast) {
+                                                      console.error(`  ❌ Figma PNG 에러 (시도 ${attempt}): ${err.message}${err.retryable === false ? ' [재시도 불가]' : ''}`);
+                                                      break;
+                                       }
+                                       const wait = 2000 * Math.pow(2, attempt - 1);  // 2s, 4s, 8s
+                                       console.warn(`  ⚠️ Figma 실패 (시도 ${attempt}): ${err.message} — ${wait / 1000}초 후 재시도`);
+                                       await sleep(wait);
                         }
-                        const imageData = await imageRes.json();
-                        if (imageData.err) throw new Error(`Figma API error: ${imageData.err}`);
-                        const images = imageData.images || {};
-                        const pngUrl = images[nodeId];
-                        if (!pngUrl) throw new Error('Figma에서 이미지 URL을 받지 못함');
-                        console.log('  📥 PNG 다운로드 중...');
-                        const pngRes = await fetch(pngUrl);
-                        if (!pngRes.ok) throw new Error(`PNG 다운로드 실패: ${pngRes.status}`);
-                        return Buffer.from(await pngRes.arrayBuffer());
-           } catch (err) {
-                        console.error(`  ❌ Figma PNG 다운로드 에러: ${err.message}`);
-                        return null;
            }
+           console.error(`  ❌ Figma Export 최종 실패 — canvas fallback 사용`);
+           return null;
 }
 
 // ============================================================
