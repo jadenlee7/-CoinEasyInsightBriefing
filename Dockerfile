@@ -3,7 +3,9 @@ FROM node:20-slim
 WORKDIR /app
 
 # Install FFmpeg, Python3, pip for Edge TTS, fonts, node-canvas dependencies,
-# and Chromium (brand v2 card renderer: puppeteer-core HTML -> PNG)
+# and Chromium (brand v2 card renderer: puppeteer-core HTML -> PNG).
+# chromium runtime deps are listed explicitly because --no-install-recommends
+# skips them and headless launch fails without them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
         python3 \
@@ -19,7 +21,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                 pkg-config \
                                                     build-essential \
                                                         chromium \
-                                                            && rm -rf /var/lib/apt/lists/*
+                                                            libnss3 \
+                                                                libxss1 \
+                                                                    libappindicator3-1 \
+                                                                        libindicator7 \
+                                                                            fonts-liberation \
+                                                                                xdg-utils \
+                                                                                    libatk-bridge2.0-0 \
+                                                                                        libgbm1 \
+                                                                                            libxkbcommon0 \
+                                                                                                && rm -rf /var/lib/apt/lists/*
 
 # Brand v2 card renderer configuration
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
