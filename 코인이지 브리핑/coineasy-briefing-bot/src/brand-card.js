@@ -240,18 +240,32 @@ export async function renderKoreaCard(ctx) {
   await writeFile(tmpHtml, html, 'utf8');
 
   const { default: puppeteer } = await import('puppeteer-core');
-  const browser = await puppeteer.launch({
-    executablePath: chromium,
-    args: [
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--force-color-profile=srgb',
-      '--font-render-hinting=none',
-      '--disable-gpu',
-      '--disable-dev-tools',
-      '--disable-extensions',
-    ],
-  });
+  const args = [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--force-color-profile=srgb',
+    '--font-render-hinting=none',
+    '--disable-gpu',
+    '--disable-dev-tools',
+    '--disable-extensions',
+  ];
+  let browser;
+  try {
+    console.log(`  🔍 Chromium 경로: ${chromium}`);
+    console.log(`  🔍 PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+    console.log(`  🔍 Chromium 파일 존재: ${existsSync(chromium)}`);
+    console.log(`  🔍 실행 args: ${JSON.stringify(args)}`);
+
+    browser = await puppeteer.launch({
+      executablePath: chromium,
+      args,
+    });
+  } catch (launchErr) {
+    console.error(`  ❌ Puppeteer launch 실패:`);
+    console.error(`     Message: ${launchErr.message}`);
+    console.error(`     Stack: ${launchErr.stack}`);
+    throw launchErr;
+  }
   try {
     const page = await browser.newPage();
     await page.setViewport({
