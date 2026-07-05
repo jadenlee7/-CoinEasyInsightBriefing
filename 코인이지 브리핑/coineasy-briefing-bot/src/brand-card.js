@@ -240,18 +240,29 @@ export async function renderKoreaCard(ctx) {
   await writeFile(tmpHtml, html, 'utf8');
 
   const { default: puppeteer } = await import('puppeteer-core');
-  const browser = await puppeteer.launch({
-    executablePath: chromium,
-    args: [
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--force-color-profile=srgb',
-      '--font-render-hinting=none',
-      '--disable-gpu',
-      '--disable-dev-tools',
-      '--disable-extensions',
-    ],
-  });
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      executablePath: chromium,
+      dumpio: true, // chromium stderr를 서비스 로그로 직행 (침묵 크래시 진단)
+      args: [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--force-color-profile=srgb',
+        '--font-render-hinting=none',
+        '--disable-gpu',
+        '--disable-dev-tools',
+        '--disable-extensions',
+        '--single-process',
+        '--no-zygote',
+      ],
+    });
+  } catch (err) {
+    console.error(`[brand-card] chromium 기동 실패 (executablePath=${chromium}): ${err.message}`);
+    console.error(err.stack);
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
   try {
     const page = await browser.newPage();
     await page.setViewport({
