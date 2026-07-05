@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "test": "node --test src/brand-v2.test.js",
     "test:figma": "node src/figma-daily/runDailyFigma.js",
     "test:shorts": "node src/youtube-shorts-generator.js",
     "test:upload": "node src/youtube-uploader.js"
@@ -19,6 +20,8 @@
     "ioredis": "^5.4.0",
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
+    "nunjucks": "^3.2.4",
+    "puppeteer-core": "^23.11.1",
     "telegram": "^2.19.7",
     "twitter-api-v2": "^1.15.0"
   },
