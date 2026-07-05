@@ -23,6 +23,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { createCanvas, loadImage, registerFont } from 'canvas';
 import { renderCanvasBanner, getTimeLabel } from './canvas-banner.js';
+import { renderDigestCard } from './brand-card.js';
 
 // ============================================================
 // 설정
@@ -492,6 +493,21 @@ function overlayTexts(canvas, ctx, data, scale) {
 // 메인 Export 함수
 // ============================================================
 export async function exportFigmaBanner(data) {
+           // 브랜드 v2 카드(coineasy_brand 템플릿) 우선 시도.
+           // 실패 시 아래 기존 Figma → canvas fallback 체인을 그대로 탄다 (구형 렌더러 보존).
+           try {
+                        const v2Buffer = await renderDigestCard(data, null, 'kr');
+                        const bannersDir = './banners';
+                        if (!existsSync(bannersDir)) await mkdir(bannersDir, { recursive: true });
+                        const dateStr = new Date().toISOString().split('T')[0];
+                        const filename = `${bannersDir}/banner_${dateStr}_v2.png`;
+                        await writeFile(filename, v2Buffer);
+                        console.log(`  ✅ 브랜드 v2 카드 생성: ${filename} (${(v2Buffer.length / 1024).toFixed(1)}KB)`);
+                        return { buffer: v2Buffer, filename, size: v2Buffer.length };
+           } catch (v2Err) {
+                        console.warn(`  ⚠️ 브랜드 v2 카드 실패 — 레거시 렌더러로 폴백: ${v2Err.message}`);
+           }
+
            // data.market이 비어있으면 Figma 오버레이가 stale한 템플릿 값을 남기므로 canvas fallback 사용
            const hasMarketData = data?.market && Array.isArray(data.market) && data.market.length > 0;
            if (!hasMarketData) {
@@ -578,7 +594,7 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
                         return false;
            }
 
-           // 캡션을 줄바꿈 기준으로 안전하게 자르기 (Markdown 태그 깨짐 방지)
+           // 캡션을 줄바꿈 기준으로 안전하게 자르기 (태그 깨짐 방지)
            function safeTrimCaption(text, maxLen = 1020) {
                         if (!text || text.length <= maxLen) return text;
                         const lines = text.split('\n');
@@ -591,8 +607,10 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
            }
 
            function stripMarkdown(text) {
-                        // [text](url) → text (url)  (keeps URL visible when Markdown fails)
+                        // HTML 앵커/태그와 Markdown을 모두 제거 (URL은 보이게 유지)
                         return text
+                                       .replace(/<a\s+href="([^"]+)"[^>]*>([^<]+)<\/a>/g, '$2 ($1)')
+                                       .replace(/<[^>]+>/g, '')
                                        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
                                        .replace(/\*([^*]+)\*/g, '$1')
                                        .replace(/_([^_]+)_/g, '$1')
@@ -602,14 +620,14 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
            try {
                         const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
 
-                        // 1차: Markdown 캡션 (안전하게 잘라서)
+                        // 1차: HTML 캡션 (채널 정책: parse_mode HTML, CTA 하이퍼링크 3종)
                         const formData = new FormData();
                         const blob = new Blob([imageBuffer], { type: 'image/png' });
                         formData.append('chat_id', chatId);
                         formData.append('photo', blob, 'coineasy_daily_banner.png');
                         if (caption) {
                                        formData.append('caption', safeTrimCaption(caption));
-                                       formData.append('parse_mode', 'Markdown');
+                                       formData.append('parse_mode', 'HTML');
                         }
                         const res = await fetch(url, { method: 'POST', body: formData });
                         const result = await res.json();
@@ -618,8 +636,8 @@ export async function sendTelegramPhoto(imageBuffer, caption, chatId, botToken) 
                                        return true;
                         }
 
-                        // 2차: Markdown 제거 + 안전하게 자르기
-                        console.warn(`[텔레그램] Markdown 캡션 실패 (${result.description}), 일반 텍스트로 재시도`);
+                        // 2차: 태그 제거 + 안전하게 자르기
+                        console.warn(`[텔레그램] HTML 캡션 실패 (${result.description}), 일반 텍스트로 재시도`);
                         const formData2 = new FormData();
                         const blob2 = new Blob([imageBuffer], { type: 'image/png' });
                         formData2.append('chat_id', chatId);

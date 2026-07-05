@@ -90,10 +90,11 @@ const X_POST_SYSTEM_PROMPT = `당신은 "코인이지(CoinEasy)"의 X(Twitter) �
 자세한 브리핑은 텔레그램에서 👉 @coiniseasy"`;
 
 
-// 공통 footer (공지방/소통방/X 링크 + 해시태그) — 이모지 없이
-const BRIEFING_FOOTER = '\n\n' +
-  '[공지방](https://t.me/coiniseasy) | [소통방](https://t.me/coineasy_official) | [X](https://twitter.com/Coiniseasy)\n\n' +
-  '#이지에드 #EasyEd #CoinEasy #이지브리핑';
+// TG 공지방 footer (채널 정책: 해시태그 3개 + CTA 하이퍼링크 3종, parse_mode HTML)
+// 본문(LLM 출력)은 Markdown이므로 발송 직전에 HTML 변환 후 이 footer를 붙인다 (index.js).
+export const BRIEFING_FOOTER_HTML = '\n\n' +
+  '#코인이지 #이지브리핑 #비트코인\n\n' +
+  '📢 <a href="https://t.me/coiniseasy">공지방</a> · 💬 <a href="https://t.me/coineasy_official">소통방</a> · ✖️ <a href="https://x.com/coiniseasy">X</a>';
 
 // ============================================================
 // 데이터 기반 fallback 브리핑 (AI 호출 실패 시)
@@ -246,15 +247,14 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
     if (!text.trim()) {
       // AI가 빈 응답 → fallback
       console.warn('[브리핑 생성] AI 빈 응답 — fallback 브리핑 사용');
-      return buildFallbackTelegramBriefing(data) + BRIEFING_FOOTER;
+      return buildFallbackTelegramBriefing(data);
     }
-    const withFooter = text + BRIEFING_FOOTER;
-    console.log(`[브리핑 생성] 텔레그램 완료 (${withFooter.length}자)`);
-    return withFooter;
+    console.log(`[브리핑 생성] 텔레그램 완료 (${text.length}자)`);
+    return text;
   } catch (err) {
     console.error(`[브리핑 생성 에러] ${err.message} — fallback 브리핑 사용`);
     // AI 실패 시 데이터 기반 fallback 브리핑 발송 (텍스트 누락 방지)
-    return buildFallbackTelegramBriefing(data) + BRIEFING_FOOTER;
+    return buildFallbackTelegramBriefing(data);
   }
 }
 

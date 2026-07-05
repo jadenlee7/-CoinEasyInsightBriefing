@@ -139,6 +139,28 @@
     font-size:19px;display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px;}
   .banner{position:relative;margin-top:auto;background:linear-gradient(90deg,var(--orange-deep),var(--orange));
     color:#fff;border-radius:18px;padding:22px 26px;text-align:center;font-weight:700;font-size:29px;letter-spacing:1px;}
+
+  /* ---------- digest (portrait daily digest card) ---------- */
+  .dg-hero{position:relative;text-align:center;margin-top:38px;}
+  .dg-big{font-weight:700;line-height:1;letter-spacing:-2px;margin-top:14px;}
+  .dg-big .num{font-size:96px;}
+  .dg-sub{margin-top:12px;font-size:22px;color:var(--ink-soft);font-weight:500;}
+  .dg-mascot{position:absolute;top:112px;height:170px;
+    filter:drop-shadow(0 12px 16px rgba(251,81,0,.15));}
+  .dg-mascot.bull{left:0;} .dg-mascot.bear{right:0;}
+  .dg-stats .stat{min-width:0;flex:1;padding:20px 22px;}
+  .dg-stats .stat .v{font-size:30px;}
+  .dg-note{margin-top:10px;font-size:19px;color:var(--ink-soft);font-weight:500;}
+  .dg-cols{display:flex;gap:18px;margin-top:auto;}
+  .dg-col{flex:1;display:flex;flex-direction:column;gap:12px;min-width:0;}
+  .dg-col .sec{font-size:19px;letter-spacing:2px;color:var(--ink-soft);font-weight:700;margin:4px 0 2px 4px;}
+  .dg-row{display:flex;align-items:center;gap:12px;background:var(--card);
+    border:2px solid var(--line);border-radius:14px;padding:15px 16px;}
+  .dg-row .rank{width:34px;height:34px;border-radius:9px;background:var(--orange-tint);
+    color:var(--orange-deep);font-weight:700;font-size:18px;display:flex;align-items:center;justify-content:center;flex:none;}
+  .dg-row .tick{font-weight:700;font-size:21px;white-space:nowrap;max-width:230px;overflow:hidden;text-overflow:ellipsis;}
+  .dg-row .nm{font-weight:500;font-size:17px;color:var(--ink-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .dg-row .chg{font-weight:700;font-size:20px;white-space:nowrap;margin-left:auto;}
 </style>
 </head>
 <body>
@@ -248,9 +270,63 @@
       {% for p in plan %}<div class="prow"><div class="pnum">{{ loop.index }}</div><div>{{ p|safe }}</div></div>{% endfor %}
     </div>
     <div class="banner">{{ banner }}</div>
+
+    {% elif card_type == 'digest' %}
+    <img class="dg-mascot bull" src="{{ assets }}/brand/easyboy_bull.png">
+    <img class="dg-mascot bear" src="{{ assets }}/brand/easyboy_bear.png">
+    <div class="dg-hero">
+      <div class="kicker">{{ kicker }}</div>
+      <div class="dg-big"><span class="num">{{ hero_value }}</span><span class="pill {{ hero_state }}" style="vertical-align:24px;">{{ hero_tag }}</span></div>
+      {% if hero_sub %}<div class="dg-sub">{{ hero_sub }}</div>{% endif %}
+    </div>
+    <div class="stats dg-stats" style="margin-top:42px;">
+      {% for s in stats %}
+      <div class="stat"><div class="l">{{ s.label }}</div><div class="v">{{ s.value }}</div>
+        {% if s.delta %}<div class="d {{ s.state|default('flat') }}">{{ s.delta }}</div>{% endif %}</div>
+      {% endfor %}
+    </div>
+    <div class="duo" style="margin-top:42px;">
+      <div class="panel">
+        <div class="pl">{{ kimchi_label }}</div>
+        <div class="gaugerow">
+          <div><div class="gval">{{ kimchi_value }}</div><div class="gtag">{{ kimchi_tag }}</div></div>
+        </div>
+        {% if kimchi_sub %}<div class="dg-note">{{ kimchi_sub }}</div>{% endif %}
+      </div>
+      <div class="panel">
+        <div class="pl">{{ fng_title }}</div>
+        <div class="gaugerow">
+          <svg width="150" height="92" viewBox="0 0 150 92">
+            <defs><linearGradient id="dgg" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#E0442E"/><stop offset=".5" stop-color="#F7931A"/>
+              <stop offset="1" stop-color="#1FA05A"/></linearGradient></defs>
+            <path d="M15 80 A60 60 0 0 1 135 80" stroke="url(#dgg)" stroke-width="15" fill="none" stroke-linecap="round"/>
+            <line x1="75" y1="80" x2="{{ fng_x2 }}" y2="{{ fng_y2 }}" stroke="#1B1B23" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="75" cy="80" r="7" fill="#1B1B23"/>
+          </svg>
+          <div><div class="gval">{{ fng_value }}</div><div class="gtag">{{ fng_label }}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="dg-cols">
+      <div class="dg-col"><div class="sec">{{ defi_label }}</div>
+        {% for m in defi_rows %}
+        <div class="dg-row"><div class="rank">{{ loop.index }}</div><div class="tick">{{ m.name }}</div>
+          <div class="nm">{{ m.sub }}</div><div class="chg {{ m.state|default('flat') }}">{{ m.chg }}</div></div>
+        {% endfor %}
+      </div>
+      <div class="dg-col"><div class="sec">{{ trend_label }}</div>
+        {% for m in trend_rows %}
+        <div class="dg-row"><div class="rank">{{ loop.index }}</div><div class="tick">{{ m.name }}</div>
+          <div class="nm">{{ m.sub }}</div><div class="chg {{ m.state|default('flat') }}">{{ m.chg }}</div></div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="ibox" style="margin-top:auto;"><div class="il">{{ quote_label }}</div>
+      <div class="it">{{ quote_text }}{% if quote_author %} <b>· {{ quote_author }}</b>{% endif %}</div></div>
     {% endif %}
 
-    <img class="mascot" src="{{ assets }}/brand/{{ mascot }}.png">
+    {% if mascot %}<img class="mascot" src="{{ assets }}/brand/{{ mascot }}.png">{% endif %}
     {% if mascot_tag %}<div class="mascot-tag">{{ mascot_tag }}</div>{% endif %}
 
     <div class="foot">

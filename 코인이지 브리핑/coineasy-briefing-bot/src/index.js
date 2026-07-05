@@ -8,11 +8,15 @@
 // 3. YouTube Shorts 생성 → 업로드
 
 import cron from 'node-cron';
+import { writeFile, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
 import { collectAllData } from './fetcher.js';
-import { generateTelegramBriefing } from './generator.js';
+import { generateTelegramBriefing, BRIEFING_FOOTER_HTML } from './generator.js';
 import { sendTelegramMessage } from './telegram.js';
 import { exportFigmaBanner, sendTelegramPhoto } from './figma-banner.js';
 import { postBriefingToSocial } from './typefully-poster.js';
+import { renderDigestCard } from './brand-card.js';
+import { composeEnglishDigest } from './social-composer.js';
 
 // ─── Crash protection ────────────────────────────────
 process.on('unhandledRejection', (reason) => {
@@ -29,6 +33,10 @@ const CONFIG = {
   channelId: process.env.TELEGRAM_CHANNEL_ID,
   chatId: process.env.TELEGRAM_CHAT_ID || '',
 };
+
+// DIGEST_V2_DRYRUN=1(on/true/yes)이면 발행 대신 렌더 결과를 파일/로그로만 남긴다.
+// 배포 직후 v2 카드를 검수하기 위한 게이트 — 미설정(기본)이면 정상 발행.
+const DIGEST_V2_DRYRUN = /^(1|true|on|yes)$/i.test(process.env.DIGEST_V2_DRYRUN || '');
 
 // ─── Session helper ────────────────────────────────────
 function getSession(now) {
@@ -53,10 +61,6 @@ function markdownToHtml(text) {
     .replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
-function buildFooter() {
-  // footer는 generator.js에서 처리 (링크 + 해시태그)
-  return '';
-}
 // ─── 메인 브리핑 파이프라인 ────────────────────────────
 async function runBriefingPipeline() {
   const startTime = Date.now();
@@ -76,11 +80,13 @@ async function runBriefingPipeline() {
 
     // Step 2: AI 텍스트 브리핑 생성
     console.log('\n✍️ Step 2: AI 텍스트 브리핑 생성 중...');
-    let briefingText = '';
+    let briefingText = '';   // LLM 본문 (Markdown, footer 없음)
+    let tgCaption = '';      // TG 캡션 (HTML 변환 + 해시태그/CTA footer)
     const telegramBriefing = await generateTelegramBriefing(data);
     if (telegramBriefing) {
       // ## 헤더 제거 (혹시 AI가 생성했을 경우 안전장치)
-      briefingText = telegramBriefing.replace(/^##\s*/gm, '') + buildFooter();
+      briefingText = telegramBriefing.replace(/^##\s*/gm, '');
+      tgCaption = markdownToHtml(briefingText) + BRIEFING_FOOTER_HTML;
       console.log(`  ✅ 브리핑 생성 완료 (${briefingText.length}자)`);
     } else {
       console.error('  ❌ 브리핑 생성 실패');
@@ -97,11 +103,14 @@ async function runBriefingPipeline() {
       if (bannerResult && bannerResult.buffer) {
         console.log(`  ✅ 배너 생성 완료 (${(bannerResult.size / 1024).toFixed(1)}KB)`);
         savedBannerBuffer = bannerResult.buffer;
-        if (targetChatId && CONFIG.botToken) {
-          // 배너 사진 + 브리핑을 캡션으로 합쳐서 한 포스트로 발송
+        if (DIGEST_V2_DRYRUN) {
+          console.log(`  🧪 DIGEST_V2_DRYRUN — 텔레그램 발송 스킵 (렌더 파일: ${bannerResult.filename})`);
+          posted = true; // 텍스트 fallback 발송도 막는다
+        } else if (targetChatId && CONFIG.botToken) {
+          // 배너 사진 + 브리핑을 캡션으로 합쳐서 한 포스트로 발송 (parse_mode HTML)
           const photoSent = await sendTelegramPhoto(
             bannerResult.buffer,
-            briefingText || null,
+            tgCaption || null,
             targetChatId,
             CONFIG.botToken
           );
@@ -116,36 +125,60 @@ async function runBriefingPipeline() {
     }
 
     // 배너 발송이 안 됐으면(배너 실패 등) 텍스트만이라도 발송 (누락 방지)
-    if (!posted && briefingText && targetChatId && CONFIG.botToken) {
-      const htmlBriefing = markdownToHtml(briefingText);
-      const textSent = await sendTelegramMessage(htmlBriefing, targetChatId, CONFIG.botToken);
+    if (!posted && !DIGEST_V2_DRYRUN && tgCaption && targetChatId && CONFIG.botToken) {
+      const textSent = await sendTelegramMessage(tgCaption, targetChatId, CONFIG.botToken);
       console.log(`  ${textSent ? '✅' : '❌'} 브리핑 텍스트만 공지방 발송 (배너 fallback)`);
     }
 
     // Step 4: Typefully 소셜 포스팅 (X + LinkedIn + Threads)
-    if (briefingText && process.env.TYPEFULLY_API_KEY && process.env.TYPEFULLY_SOCIAL_SET_ID) {
+    // 채널 정책: 전부 영어, 해시태그/링크/팔로우 CTA 금지 (데이터 기반 EN 컴포저 사용)
+    if (DIGEST_V2_DRYRUN) {
+      console.log('\n🧪 Step 4: DIGEST_V2_DRYRUN — Typefully 발행 스킵, 렌더/캡션만 저장');
+      try {
+        const bannersDir = './banners';
+        if (!existsSync(bannersDir)) await mkdir(bannersDir, { recursive: true });
+        const dateStr = new Date().toISOString().split('T')[0];
+        try {
+          const enBuffer = await renderDigestCard(data, session, 'en');
+          const enPath = `${bannersDir}/dryrun_digest_en_${dateStr}.png`;
+          await writeFile(enPath, enBuffer);
+          console.log(`  🧪 EN 카드 저장: ${enPath}`);
+        } catch (enErr) {
+          console.warn(`  ⚠️ EN 카드 렌더 실패: ${enErr.message}`);
+        }
+        const captionPath = `${bannersDir}/dryrun_captions_${dateStr}.txt`;
+        const captionDump = [
+          '=== TG caption (parse_mode HTML) ===',
+          tgCaption || '(없음)',
+          '',
+          '=== Typefully EN ===',
+          composeEnglishDigest(data, session),
+          '',
+        ].join('\n');
+        await writeFile(captionPath, captionDump, 'utf8');
+        console.log(`  🧪 캡션 저장: ${captionPath}`);
+      } catch (dryErr) {
+        console.warn(`  ⚠️ dry-run 저장 에러: ${dryErr.message}`);
+      }
+    } else if (briefingText && process.env.TYPEFULLY_API_KEY && process.env.TYPEFULLY_SOCIAL_SET_ID) {
       console.log('\n📱 Step 4: Typefully 소셜 포스팅 중...');
       try {
-        // 소셜 미디어용 텍스트 (Markdown 제거 + 간결하게)
-        const socialText = briefingText
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) → text
-          .replace(/\*([^*]+)\*/g, '$1')               // *bold* → bold
-          .replace(/_([^_]+)_/g, '$1')                   // _italic_ → italic
-          .replace(/^.*#[^\s#]+(?:\s+#[^\s#]+)*\s*$/gm, '')  // 해시태그만 있는 줄 통째로 제거
-          .replace(/\s+#[^\s#]+/g, '')                 // 인라인 해시태그도 제거
-          .replace(/^.*공지방.*소통방.*$/gm, '')          // 공지방|소통방|X 링크 줄 제거
-          .replace(/\n{3,}/g, '\n\n')                 // 빈 줄 정리
-          .trim();
+        const socialText = composeEnglishDigest(data, session);
 
-        // 배너 이미지 (Step 3에서 생성한 것 직접 사용)
-        if (savedBannerBuffer) {
-          console.log(`  🖼️ 배너 버퍼 사용 (${Math.round(savedBannerBuffer.length / 1024)}KB)`);
-        } else {
+        // EN 브랜드 카드 렌더 (실패 시 Step 3의 KR 배너로 대체)
+        let socialImage = savedBannerBuffer;
+        try {
+          socialImage = await renderDigestCard(data, session, 'en');
+          console.log(`  🖼️ EN 브랜드 카드 렌더 완료 (${Math.round(socialImage.length / 1024)}KB)`);
+        } catch (enErr) {
+          console.warn(`  ⚠️ EN 카드 렌더 실패 — KR 배너로 대체: ${enErr.message}`);
+        }
+        if (!socialImage) {
           console.log('  ⚠️ 배너 없음 — 텍스트만 포스팅');
         }
 
         console.log(`  📝 소셜 텍스트: ${socialText.length}자`);
-        const socialResult = await postBriefingToSocial(socialText, savedBannerBuffer);
+        const socialResult = await postBriefingToSocial(socialText, socialImage);
         if (socialResult.success) {
           console.log(`  ✅ Typefully 포스팅 완료!`);
           if (socialResult.xUrl) console.log(`    → X: ${socialResult.xUrl}`);

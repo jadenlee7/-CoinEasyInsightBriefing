@@ -2,7 +2,8 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install FFmpeg, Python3, pip for Edge TTS, fonts, and node-canvas dependencies
+# Install FFmpeg, Python3, pip for Edge TTS, fonts, node-canvas dependencies,
+# and Chromium (brand v2 card renderer: puppeteer-core HTML -> PNG)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
         python3 \
@@ -17,7 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                             librsvg2-dev \
                                                 pkg-config \
                                                     build-essential \
-                                                        && rm -rf /var/lib/apt/lists/*
+                                                        chromium \
+                                                            && rm -rf /var/lib/apt/lists/*
+
+# Brand v2 card renderer configuration
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV COINEASY_BRAND_DIR=/app/coineasy_brand
 
                                                         # Install Edge TTS (Korean TTS engine)
                                                         RUN pip3 install --break-system-packages edge-tts
@@ -51,6 +57,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                                                                                                                     echo "Using bot directory: $BOT_DIR" && \
                                                                                                                                                         ls -la "$BOT_DIR/src/" && \
                                                                                                                                                             cp -r "$BOT_DIR"/. /app/
+
+# Vendored brand v2 design system (template + fonts + mascots) for the card renderer
+RUN cp -r /repo/coineasy_brand /app/coineasy_brand && ls /app/coineasy_brand/templates/
                                                                                                                                                             
                                                                                                                                                             # Install dependencies
                                                                                                                                                             RUN npm install --only=production
