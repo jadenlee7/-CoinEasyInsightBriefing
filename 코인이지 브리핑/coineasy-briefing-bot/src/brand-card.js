@@ -242,7 +242,15 @@ export async function renderKoreaCard(ctx) {
   const { default: puppeteer } = await import('puppeteer-core');
   const browser = await puppeteer.launch({
     executablePath: chromium,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-color-profile=srgb', '--font-render-hinting=none'],
+    args: [
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--force-color-profile=srgb',
+      '--font-render-hinting=none',
+      '--disable-gpu',
+      '--disable-dev-tools',
+      '--disable-extensions',
+    ],
   });
   try {
     const page = await browser.newPage();
