@@ -24,7 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                                             libnss3 \
                                                                 libxss1 \
                                                                     libappindicator3-1 \
-                                                                        libindicator7 \
                                                                             fonts-liberation \
                                                                                 xdg-utils \
                                                                                     libatk-bridge2.0-0 \
