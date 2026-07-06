@@ -2,10 +2,10 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install FFmpeg, Python3, pip for Edge TTS, fonts, node-canvas dependencies,
-# and Chromium (brand v2 card renderer: puppeteer-core HTML -> PNG).
-# chromium runtime deps are listed explicitly because --no-install-recommends
-# skips them and headless launch fails without them.
+# Install FFmpeg, Python3, pip for Edge TTS, fonts, and node-canvas dependencies.
+# The brand v2 card renderer uses @sparticuz/chromium (bundled binary, no system
+# chromium package). Its shared-library deps (libnss3, libgbm1, fonts, ...) are
+# installed explicitly since --no-install-recommends skips them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
         python3 \
@@ -20,19 +20,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                                             librsvg2-dev \
                                                 pkg-config \
                                                     build-essential \
-                                                        chromium \
-                                                            libnss3 \
-                                                                libxss1 \
-                                                                    libappindicator3-1 \
-                                                                            fonts-liberation \
-                                                                                xdg-utils \
-                                                                                    libatk-bridge2.0-0 \
-                                                                                        libgbm1 \
-                                                                                            libxkbcommon0 \
-                                                                                                && rm -rf /var/lib/apt/lists/*
+                                                        libnss3 \
+                                                            libxss1 \
+                                                                fonts-liberation \
+                                                                    xdg-utils \
+                                                                        libatk-bridge2.0-0 \
+                                                                            libgbm1 \
+                                                                                libxkbcommon0 \
+                                                                                    && rm -rf /var/lib/apt/lists/*
 
-# Brand v2 card renderer configuration
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# Brand v2 card renderer configuration.
+# No PUPPETEER_EXECUTABLE_PATH: @sparticuz/chromium supplies its own binary.
+# (If a PUPPETEER_EXECUTABLE_PATH env is set elsewhere, e.g. the Railway
+# dashboard, remove it so the sparticuz binary is used.)
 ENV COINEASY_BRAND_DIR=/app/coineasy_brand
 
                                                         # Install Edge TTS (Korean TTS engine)

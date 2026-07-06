@@ -31,6 +31,7 @@ export function resolveBrandDir() {
   return null;
 }
 
+// 시스템 chromium 경로 (로컬 개발 폴백). 프로덕션은 아래 @sparticuz/chromium 사용.
 function resolveChromium() {
   const candidates = [
     process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -41,6 +42,44 @@ function resolveChromium() {
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
+  return null;
+}
+
+// 시스템 chromium 폴백용 인자 세트 (로컬 개발). 프로덕션은 sparticuz.args를 사용.
+const LOCAL_CHROMIUM_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--force-color-profile=srgb',
+  '--font-render-hinting=none',
+];
+
+// launch 설정 해석. 우선순위:
+//  1) COINEASY_CHROMIUM_PATH (명시적 오버라이드, 로컬/수동)
+//  2) @sparticuz/chromium (제약 컨테이너용 번들 바이너리 + 튜닝된 인자 — 프로덕션)
+//  3) 시스템 chromium (로컬 개발)
+async function resolveLaunch() {
+  const override = process.env.COINEASY_CHROMIUM_PATH;
+  if (override && existsSync(override)) {
+    return { executablePath: override, args: LOCAL_CHROMIUM_ARGS, headless: true, source: `override:${override}` };
+  }
+  try {
+    const { default: sparticuz } = await import('@sparticuz/chromium');
+    const exePath = await sparticuz.executablePath();
+    if (exePath && existsSync(exePath)) {
+      return {
+        executablePath: exePath,
+        args: sparticuz.args,
+        headless: sparticuz.headless ?? 'shell',
+        source: 'sparticuz',
+      };
+    }
+  } catch (e) {
+    console.warn(`[brand-card] @sparticuz/chromium 사용 불가, 시스템 chromium 폴백: ${e.message}`);
+  }
+  const sys = resolveChromium();
+  if (sys) return { executablePath: sys, args: LOCAL_CHROMIUM_ARGS, headless: true, source: `system:${sys}` };
   return null;
 }
 
@@ -219,8 +258,8 @@ export async function renderKoreaCard(ctx) {
   const brandDir = resolveBrandDir();
   if (!brandDir) throw new Error('coineasy_brand 디렉토리를 찾을 수 없음 (COINEASY_BRAND_DIR 확인)');
 
-  const chromium = resolveChromium();
-  if (!chromium) throw new Error('chromium 실행 파일을 찾을 수 없음 (PUPPETEER_EXECUTABLE_PATH 확인)');
+  const launchCfg = await resolveLaunch();
+  if (!launchCfg) throw new Error('chromium 실행 파일을 찾을 수 없음 (@sparticuz/chromium 또는 COINEASY_CHROMIUM_PATH 확인)');
 
   const tplPath = path.join(brandDir, 'templates', 'korea_card.html.j2');
   const tpl = await readFile(tplPath, 'utf8');
@@ -243,22 +282,13 @@ export async function renderKoreaCard(ctx) {
   let browser;
   try {
     browser = await puppeteer.launch({
-      executablePath: chromium,
+      executablePath: launchCfg.executablePath,
+      headless: launchCfg.headless,
       dumpio: true, // chromium stderr를 서비스 로그로 직행 (침묵 크래시 진단)
-      args: [
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-        '--force-color-profile=srgb',
-        '--font-render-hinting=none',
-        '--disable-gpu',
-        '--disable-dev-tools',
-        '--disable-extensions',
-        '--single-process',
-        '--no-zygote',
-      ],
+      args: launchCfg.args,
     });
   } catch (err) {
-    console.error(`[brand-card] chromium 기동 실패 (executablePath=${chromium}): ${err.message}`);
+    console.error(`[brand-card] chromium 기동 실패 (source=${launchCfg.source}, executablePath=${launchCfg.executablePath}): ${err.message}`);
     console.error(err.stack);
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     throw err;
