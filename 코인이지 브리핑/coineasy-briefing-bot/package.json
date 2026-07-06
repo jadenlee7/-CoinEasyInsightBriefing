@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
+    "@sparticuz/chromium": "^149.0.0",
     "canvas": "^2.11.2",
     "fluent-ffmpeg": "^2.1.2",
     "google-auth-library": "^9.0.0",
