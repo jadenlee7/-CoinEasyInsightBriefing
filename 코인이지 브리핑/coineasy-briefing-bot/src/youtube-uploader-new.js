@@ -39,6 +39,7 @@ const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
 function buildVideoMetadata(payload, now = new Date()) {
     const t = payload.texts;
+    const editorial = payload.editorial || {};
 
   // KST date
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -50,26 +51,29 @@ function buildVideoMetadata(payload, now = new Date()) {
   const kstHour = kst.getUTCHours();
     const sessionLabel = kstHour < 12 ? '오전' : '저녁';
 
-  // Title: fully Korean
-  const title = `${t.btc_price} (${t.btc_change}) | 코인이지 데일리 — ${month}월 ${day}일`.slice(0, 100);
+  // Topic first: discovery should reflect the day's verified editorial issue,
+  // not publish another interchangeable price-only card.
+  const topic = editorial.headline || `비트코인 ${t.btc_price}`;
+  const title = `${topic} | ${month}월 ${day}일 코인이지 #Shorts`.slice(0, 100);
 
   // Description: all Korean
   const hashtags = '#이지브리핑 #코인이지 #비트코인 #BTC #암호화폐 #크립토 #코인시황 #데일리브리핑 #유튜브쇼츠';
     const description = [
-          `📊 ${month}월 ${day}일 ${weekday}요일 ${sessionLabel} 코인이지 데일리 마켓 브리핑`,
+          `🍊 ${month}월 ${day}일 ${weekday}요일 ${sessionLabel} 코인이지 데일리 인사이트`,
+          '',
+          editorial.factTitle ? `핵심: ${editorial.factTitle}` : '',
+          editorial.fact ? `확인: ${editorial.fact}` : '',
+          editorial.verdict ? `해석: ${editorial.verdict}` : '',
+          editorial.action ? `오늘 확인할 것: ${editorial.action}` : '',
+          editorial.sourceUrl ? `출처: ${editorial.sourceUrl}` : '',
           '',
           `₿ BTC: ${t.btc_price} (${t.btc_change})`,
-          `Ξ ETH: ${t.eth_price} (${t.eth_change})`,
-          `◎ SOL: ${t.sol_price} (${t.sol_change})`,
-          '',
           `😨 공포탐욕지수: ${t.fear_value} (${{'Extreme Fear':'극단적 공포','Fear':'공포','Neutral':'중립','Greed':'탐욕','Extreme Greed':'극단적 탐욕'}[t.fear_label]||t.fear_label})`,
           `🥬 김치 프리미엄: ${t.kimchi_premium}`,
           '',
-          `💬 "${t.quote_line1}"`,
-          `   ${t.quote_line2}`,
-          '',
           '─────────────────────────',
-          '📱 코인이지 채널 구독하고 매일 아침 시장 브리핑 받아보세요!',
+          '📱 실시간 김프·상장 알림: https://t.me/coiniseasy',
+          '※ 교육용 정보이며 투자·법률·세무 자문이 아닙니다.',
           '',
           hashtags,
         ].join('\n').slice(0, 5000);
@@ -155,4 +159,4 @@ function cleanupVideo(videoPath) {
     }
 }
 
-export { uploadToYouTube, cleanupVideo };
+export { buildVideoMetadata, uploadToYouTube, cleanupVideo };

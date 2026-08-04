@@ -209,29 +209,58 @@ async function runBriefingPipeline() {
 
 // ─── YouTube Shorts pipeline ──────────────────────────
 async function runYouTubeShorts(session) {
+  const owner = (process.env.COINEASY_YT_OWNER || 'insight-briefing').trim().toLowerCase();
+  if (owner !== 'insight-briefing') {
+    console.log(`⏭️ YouTube Shorts 스킵: COINEASY_YT_OWNER=${owner}`);
+    return { success: true, skipped: true, reason: 'not-owner' };
+  }
+
+  let videoPath = null;
+  let guard = null;
   try {
-    const { generateYouTubeShort } = await import('./youtube-shorts-generator.js');
-    const { uploadToYouTube, cleanupVideo } = await import('./youtube-uploader-new.js');
+    const { generateEditorialShort } = await import('./youtube-editorial-generator.js');
+    const { uploadToYouTube } = await import('./youtube-uploader-new.js');
     const { buildPayload } = await import('./figma-daily/figmaDataBuilder.js');
+    const { loadDailyEditorial, openDailyUploadGuard } = await import('./youtube-editorial-source.js');
 
     const startTs = new Date();
-    console.log(`[${startTs.toISOString()}] 🎬 YouTube Shorts (${session.label}) 파이프라인 시작`);
+    console.log(`[${startTs.toISOString()}] 🎬 YouTube 기사형 데일리 쇼츠 파이프라인 시작`);
 
-    let videoPath = null;
+    const { date, editorial } = await loadDailyEditorial(startTs);
+    if (!editorial) {
+      console.warn(`⏭️ ${date} 검증된 일일 브리프가 없어 낮은 품질의 시세형 쇼츠를 대신 올리지 않습니다.`);
+      return { success: true, skipped: true, reason: 'editorial-missing' };
+    }
+
+    guard = await openDailyUploadGuard(date);
+    if (!guard.acquired) {
+      console.log(`⏭️ ${date} YouTube Shorts 스킵: ${guard.reason}`);
+      return { success: true, skipped: true, reason: guard.reason };
+    }
+
     const payload = await buildPayload(startTs, session);
-    videoPath = await generateYouTubeShort(payload);
+    payload.editorial = editorial;
+    payload.editorialDate = date;
+    videoPath = await generateEditorialShort(payload);
     console.log(`  ✓ 영상 생성 완료: ${videoPath}`);
 
     const videoUrl = await uploadToYouTube(videoPath, payload, startTs);
     console.log(`  ✓ YouTube 업로드 완료: ${videoUrl}`);
-    cleanupVideo(videoPath);
+    await guard.markDone(videoUrl);
+    guard = null;
 
     const elapsedMs = Date.now() - startTs.getTime();
-    console.log(`✅ YouTube Shorts (${session.label}) 완료 (${elapsedMs}ms)`);
+    console.log(`✅ YouTube 기사형 데일리 쇼츠 완료 (${elapsedMs}ms)`);
     return { success: true, videoUrl, elapsedMs };
   } catch (e) {
     console.error(`✗ YouTube Shorts 에러: ${e.message}`);
     return { success: false, error: e.message };
+  } finally {
+    if (guard?.acquired) await guard.release();
+    if (videoPath) {
+      const { cleanupVideo } = await import('./youtube-uploader-new.js');
+      cleanupVideo(videoPath);
+    }
   }
 }
 
@@ -242,38 +271,32 @@ cron.schedule('0 23 * * *', async () => {
   await runBriefingPipeline();
 }, { timezone: 'UTC' });
 
-cron.schedule('5 23 * * *', async () => {
-  const session = getSession(new Date());
-  console.log(`\n⏰ Job 2: YouTube Shorts (${session.label}) 시작`);
-  await runYouTubeShorts(session);
-}, { timezone: 'UTC' });
-
 // EVENING (KST 18:00 = UTC 09:00)
 cron.schedule('0 9 * * *', async () => {
-  console.log(`\n⏰ Job 3: 브리핑 파이프라인 (저녁) 시작`);
+  console.log(`\n⏰ Job 2: 브리핑 파이프라인 (저녁) 시작`);
   await runBriefingPipeline();
 }, { timezone: 'UTC' });
 
-// [DISABLED - YouTube Shorts only at KST 08:00]
-// cron.schedule('5 9 * * *', async () => {
-  // const session = getSession(new Date());
-  // console.log(`\n⏰ Job 4: YouTube Shorts (${session.label}) 시작`);
-  // await runYouTubeShorts(session);
-// }, { timezone: 'UTC' });
+// One editorial Short per day, after the 18:00 briefing has refreshed.
+cron.schedule('5 9 * * *', async () => {
+  const session = getSession(new Date());
+  console.log(`\n⏰ Job 3: YouTube 기사형 데일리 쇼츠 (${session.label}) 시작`);
+  await runYouTubeShorts(session);
+}, { timezone: 'UTC' });
 
 // ─── Startup ──────────────────────────────────────────
 console.log('');
 console.log('CoinEasyInsightBriefing - scheduler started');
 console.log('Job 1 (Briefing AM) : daily UTC 23:00 (KST 08:00)');
-console.log('Job 2 (Shorts AM)   : daily UTC 23:05 (KST 08:05)');
-console.log('Job 3 (Briefing PM) : daily UTC 09:00 (KST 18:00)');
-console.log('Job 4 (Shorts PM)   : daily UTC 09:05 (KST 18:05)');
+console.log('Job 2 (Briefing PM) : daily UTC 09:00 (KST 18:00)');
+console.log('Job 3 (Shorts PM)   : daily UTC 09:05 (KST 18:05, editorial only)');
 console.log('');
 
-// === ONE-TIME TEST TRIGGER ===
-(async () => {
-  console.log('ONE-TIME TEST: Running briefing pipeline...');
-  await runBriefingPipeline();
-  console.log('ONE-TIME TEST: Complete!');
-})();
-
+// Manual recovery only. Deploy/restart must not create duplicate public posts.
+if (/^(1|true|on|yes)$/i.test(process.env.RUN_BRIEFING_ON_START || '')) {
+  (async () => {
+    console.log('RUN_BRIEFING_ON_START: Running briefing pipeline once...');
+    await runBriefingPipeline();
+    console.log('RUN_BRIEFING_ON_START: Complete!');
+  })();
+}
