@@ -17,11 +17,12 @@ function buildNarration(payload) {
   const e = payload.editorial;
   const t = payload.texts;
   return [
-    '코인이지 오늘의 핵심.', `${voiceCut(e.headline, 30)}.`,
-    `확인된 사실, ${voiceCut(e.fact, 44)}.`,
-    `해석하면, ${voiceCut(e.verdict || e.context, 36)}.`,
-    `지금 비트코인 ${t.btc_price}, 김프 ${t.kimchi_premium}, 공포탐욕 ${t.fear_value}.`,
-    `오늘은 ${voiceCut(e.action, 32)}.`, `출처 ${e.sourceLabel}.`,
+    `${voiceCut(e.headline, 28)}.`,
+    `${voiceCut(e.fact, 44)}.`,
+    `${voiceCut(e.verdict || e.context, 42)}.`,
+    `비트코인 ${t.btc_price}, 김프 ${t.kimchi_premium}, 공포탐욕 ${t.fear_value}.`,
+    `${voiceCut(e.action, 28)}.`,
+    `출처 ${voiceCut(e.sourceLabel, 24)}.`,
   ].join(' ');
 }
 

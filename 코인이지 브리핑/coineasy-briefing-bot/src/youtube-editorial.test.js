@@ -28,7 +28,7 @@ test('narration includes evidence, action and source', () => {
   assert.match(narration, /발행자 요건/);
   assert.match(narration, /시행일/);
   assert.match(narration, /fsc\.go\.kr/);
-  assert.ok(narration.length <= 235);
+  assert.ok(narration.length <= 210);
 });
 
 test('voiceCut keeps spoken copy inside its beat', () => {
