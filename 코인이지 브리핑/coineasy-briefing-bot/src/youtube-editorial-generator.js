@@ -27,7 +27,7 @@ function ensureFonts() {
 
 async function loadBrandAssets() {
   const [wordmark, easyboy] = await Promise.all([
-    loadImage(path.join(BRAND_ASSET_DIR, 'logo_wordmark.png')),
+    loadImage(path.join(BRAND_ASSET_DIR, 'logo_ink.png')),
     loadImage(path.join(BRAND_ASSET_DIR, 'easyboy_analyst.png')),
   ]);
   return { wordmark, easyboy };
@@ -129,7 +129,7 @@ function drawBackground(ctx, width, height) {
 }
 
 function drawHeader(ctx, assets, date, sceneIndex) {
-  const logoHeight = 58;
+  const logoHeight = 64;
   const ratio = assets.wordmark.width / assets.wordmark.height;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(assets.wordmark, 70, 76, logoHeight * ratio, logoHeight);

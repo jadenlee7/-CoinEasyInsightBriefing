@@ -1,3 +1,9 @@
+function voiceCut(value, limit) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1).replace(/[\s,.·–—-]+$/g, '')}…`;
+}
+
 function sceneForTime(seconds) {
   if (seconds < 4) return 0;
   if (seconds < 10) return 1;
@@ -11,11 +17,12 @@ function buildNarration(payload) {
   const e = payload.editorial;
   const t = payload.texts;
   return [
-    '코인이지 오늘의 핵심입니다.', `${e.headline}.`,
-    `${e.factTitle}. ${e.fact}.`, `핵심 해석은 ${e.verdict || e.context}.`,
-    `현재 비트코인 ${t.btc_price}, 김치 프리미엄 ${t.kimchi_premium}, 공포탐욕지수 ${t.fear_value}입니다.`,
-    `오늘은 ${e.action}.`, `출처는 ${e.sourceLabel}. 수치와 제도는 바뀌 수 있습니다.`,
+    '코인이지 오늘의 핵심.', `${voiceCut(e.headline, 30)}.`,
+    `확인된 사실, ${voiceCut(e.fact, 44)}.`,
+    `해석하면, ${voiceCut(e.verdict || e.context, 36)}.`,
+    `지금 비트코인 ${t.btc_price}, 김프 ${t.kimchi_premium}, 공포탐욕 ${t.fear_value}.`,
+    `오늘은 ${voiceCut(e.action, 32)}.`, `출처 ${e.sourceLabel}.`,
   ].join(' ');
 }
 
-export { buildNarration, sceneForTime };
+export { buildNarration, sceneForTime, voiceCut };

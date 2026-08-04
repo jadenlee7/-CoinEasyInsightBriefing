@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNarration, sceneForTime } from './youtube-editorial-copy.js';
+import { buildNarration, sceneForTime, voiceCut } from './youtube-editorial-copy.js';
 import { buildVideoMetadata } from './youtube-uploader-new.js';
 
 const payload = {
@@ -28,6 +28,11 @@ test('narration includes evidence, action and source', () => {
   assert.match(narration, /발행자 요건/);
   assert.match(narration, /시행일/);
   assert.match(narration, /fsc\.go\.kr/);
+  assert.ok(narration.length <= 235);
+});
+
+test('voiceCut keeps spoken copy inside its beat', () => {
+  assert.equal(voiceCut('아주 긴 설명을 내레이션에서는 짧게 정리합니다', 16).length, 16);
 });
 
 test('YouTube metadata leads with the topic and includes source', () => {
