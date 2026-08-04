@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/brand-v2.test.js",
+    "test": "node --test src/*.test.js",
     "test:figma": "node src/figma-daily/runDailyFigma.js",
     "test:shorts": "node src/youtube-shorts-generator.js",
     "test:upload": "node src/youtube-uploader.js"

@@ -11,8 +11,8 @@ const VIDEO_WIDTH  = 1080;
 const VIDEO_HEIGHT = 1920;
 
 // ─── Timing ─────────────────────────────────────────────
-const DURATION_SECONDS = 38;   // 30-45 s sweet-spot for Shorts
-const FRAME_RATE       = 30;   // fps
+const DURATION_SECONDS = 32;   // one claim + evidence + action
+const FRAME_RATE       = 24;   // smooth motion with faster daily rendering
 
 // ─── Encoding ────────────────────────────────────────────
 const VIDEO_BITRATE = '5000k';
@@ -29,20 +29,22 @@ const OUTPUT_DIR    = '/tmp/youtube-shorts';  // ephemeral; cleaned up after upl
 
 // ─── Text-to-speech (edge-tts) ───────────────────────────
 const TTS_VOICE    = 'ko-KR-SunHiNeural';   // Korean female voice
-const TTS_RATE     = '+0%';                  // normal speed
+const TTS_RATE     = '+18%';                 // concise editorial read
 const TTS_VOLUME   = '+0%';
 
-// ─── Design tokens (match existing banner palette) ───────
+// ─── CoinEasy 2026 brand tokens ─────────────────────
 const COLORS = {
-  bg:          '#1a0f00',   // very dark brown — Shorts background
-  bgCard:      '#2a1a0a',   // card background
+  bg:          '#FFFBF6',
+  bgCard:      '#FFF8F0',
+  ink:         '#231F1A',
+  muted:       '#6B6259',
   bullGreen:   '#00b009',
   bearRed:     '#ff1f1f',
   white:       '#ffffff',
-  cream:       '#fff8e7',
-  yellow:      '#ffd600',
-  orange:      '#ff6d00',
-  gray:        '#aaaaaa',
+  cream:       '#FFF8F0',
+  yellow:      '#FFB25E',
+  orange:      '#FF6B17',
+  gray:        '#6B6259',
   overlayDark: 'rgba(0,0,0,0.55)',
 };
 
