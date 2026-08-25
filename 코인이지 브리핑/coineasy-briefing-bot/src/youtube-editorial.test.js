@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { buildNarration, sceneForTime, voiceCut } from './youtube-editorial-copy.js';
 import { buildVideoMetadata } from './youtube-uploader-new.js';
 
@@ -21,6 +23,23 @@ const payload = {
 
 test('scene timeline covers six editorial beats', () => {
   assert.deepEqual([0, 4, 10, 16, 22, 28].map(sceneForTime), [0, 1, 2, 3, 4, 5]);
+});
+
+test('editorial header uses the official transparent Main Orange wordmark', async () => {
+  const generator = await readFile(
+    new URL('./youtube-editorial-generator.js', import.meta.url),
+    'utf8',
+  );
+  const logo = await readFile(
+    new URL('../../../coineasy_brand/assets/brand/logo_main_orange_transparent.png', import.meta.url),
+  );
+
+  assert.match(generator, /loadImage\(path\.join\(BRAND_ASSET_DIR, 'logo_main_orange_transparent\.png'\)\)/);
+  assert.doesNotMatch(generator, /loadImage\(path\.join\(BRAND_ASSET_DIR, 'logo_ink\.png'\)\)/);
+  assert.equal(
+    createHash('sha256').update(logo).digest('hex'),
+    '23e9d2f922660d1c7309791e0eefabd5d78a74ccabe50435c9b9e3d63cfd8aed',
+  );
 });
 
 test('narration includes evidence, action and source', () => {

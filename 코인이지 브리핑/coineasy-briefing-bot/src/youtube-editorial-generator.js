@@ -26,8 +26,9 @@ function ensureFonts() {
 }
 
 async function loadBrandAssets() {
+  // Official CoinEasy 2026 Main Orange Logo (Figma node 28747:92), with transparency.
   const [wordmark, easyboy] = await Promise.all([
-    loadImage(path.join(BRAND_ASSET_DIR, 'logo_ink.png')),
+    loadImage(path.join(BRAND_ASSET_DIR, 'logo_main_orange_transparent.png')),
     loadImage(path.join(BRAND_ASSET_DIR, 'easyboy_analyst.png')),
   ]);
   return { wordmark, easyboy };
