@@ -29,6 +29,7 @@ const SCENE_KEYS = Object.freeze(['kind', 'text']);
 const METRIC_KEYS = Object.freeze(['as_of', 'label', 'source_url', 'value']);
 const VOICE_SEGMENT_LIMITS = Object.freeze([32, 50, 50, 50, 50, 0]);
 const METRIC_MAX_AGE_MS = Object.freeze([6, 6, 30].map((hours) => hours * 60 * 60 * 1000));
+const REDIS_READY_TIMEOUT_MS = 5000;
 
 function compact(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -289,11 +290,53 @@ function buildEditorialFromHandoff(handoff) {
 function createRedis() {
   const redisUrl = compact(process.env.COINEASY_YOUTUBE_HANDOFF_REDIS_URL || process.env.REDIS_URL);
   if (!redisUrl) throw new Error('COINEASY_YOUTUBE_HANDOFF_REDIS_URL/REDIS_URL이 없어 YouTube Shorts를 fail-closed 처리합니다.');
-  return new Redis(redisUrl, { connectTimeout: 5000, maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  return new Redis(redisUrl, {
+    connectTimeout: REDIS_READY_TIMEOUT_MS,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+  });
+}
+
+// With offline queuing disabled, issuing GET while ioredis is still connecting
+// fails immediately. Wait for its completed handshake, without queuing commands
+// or leaving a failed connection/reconnect loop alive after the bounded gate.
+function waitForRedisReady(redis, timeoutMs = REDIS_READY_TIMEOUT_MS) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > REDIS_READY_TIMEOUT_MS) {
+    return Promise.reject(new Error('Redis 준비 대기 제한이 유효하지 않습니다.'));
+  }
+  if (redis.status === 'ready') return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      redis.removeListener('ready', onReady);
+      redis.removeListener('error', onError);
+      redis.removeListener('end', onEnd);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onReady = () => finish();
+    // Do not include Redis URL, credentials, or raw transport messages in logs.
+    const onError = () => finish(new Error('Redis 연결 준비에 실패했습니다.'));
+    const onEnd = () => finish(new Error('Redis 연결이 준비 전에 종료되었습니다.'));
+    const timer = setTimeout(() => finish(new Error('Redis 연결 준비 시간이 초과되었습니다.')), timeoutMs);
+    redis.once('ready', onReady);
+    redis.once('error', onError);
+    redis.once('end', onEnd);
+    if (redis.status === 'ready') onReady();
+    else if (redis.status === 'wait') {
+      try { Promise.resolve(redis.connect()).catch(onError); }
+      catch (_) { onError(); }
+    } else if (!['connecting', 'connect', 'reconnecting'].includes(redis.status)) onEnd();
+  });
 }
 
 async function closeRedis(redis) {
   if (!redis) return;
+  if (redis.status !== 'ready') { redis.disconnect(); return; }
   try { await redis.quit(); } catch (_) { redis.disconnect(); }
 }
 
@@ -322,6 +365,7 @@ async function loadApprovedArticleHandoff(now = new Date(), options = {}) {
     throw new Error('COINEASY_YOUTUBE_HANDOFF_SECRET가 없어 handoff를 검증할 수 없습니다.');
   }
   try {
+    await waitForRedisReady(redis, options.redisReadyTimeoutMs);
     const raw = await redis.get(`${HANDOFF_PREFIX}${date}`);
     if (!raw) return { date, handoff: null, payload: null };
     let handoff;
@@ -363,6 +407,7 @@ async function openDailyUploadGuard(handoff, options = {}) {
   const receiptKey = `${RECEIPT_PREFIX}${date}`;
   const token = options.token || crypto.randomUUID();
   try {
+    await waitForRedisReady(redis, options.redisReadyTimeoutMs);
     if (await redis.get(receiptKey)) {
       await closeRedis(redis);
       return { acquired: false, reason: 'already-uploaded' };

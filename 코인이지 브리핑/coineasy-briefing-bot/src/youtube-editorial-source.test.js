@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
 import {
   APPROVED_QUEUE_POLICY,
   ARTICLE_SLOT_KST,
@@ -77,27 +78,33 @@ function signedHandoff(overrides = {}) {
   return base;
 }
 
-class FakeRedis {
+class FakeRedis extends EventEmitter {
   constructor(initial = {}) {
+    super();
+    this.status = 'ready';
     this.values = new Map(Object.entries(initial));
     this.setCalls = [];
     this.getCalls = [];
+    this.quitCalls = 0;
+    this.disconnectCalls = 0;
   }
 
   async get(key) {
+    assert.equal(this.status, 'ready', 'GET must wait for the Redis handshake');
     this.getCalls.push(key);
     return this.values.has(key) ? this.values.get(key) : null;
   }
 
   async set(key, value, ...args) {
+    assert.equal(this.status, 'ready', 'SET must wait for the Redis handshake');
     this.setCalls.push([key, value, ...args]);
     if (args.includes('NX') && this.values.has(key)) return null;
     this.values.set(key, value);
     return 'OK';
   }
 
-  async quit() {}
-  disconnect() {}
+  async quit() { this.quitCalls += 1; }
+  disconnect() { this.disconnectCalls += 1; }
 }
 
 test('kstDate uses Korea time across UTC midnight', () => {
@@ -230,6 +237,78 @@ test('loader reads only the exact signed date key and does not invent a fallback
   });
   assert.equal(missing.handoff, null);
   assert.equal(missing.payload, null);
+});
+
+test('loader explicitly connects a lazy client before its first GET', async () => {
+  const redis = new FakeRedis();
+  redis.status = 'wait';
+  let connectCalls = 0;
+  redis.connect = async () => {
+    connectCalls += 1;
+    redis.status = 'connecting';
+    assert.deepEqual(redis.getCalls, []);
+    await Promise.resolve();
+    redis.status = 'ready';
+    redis.emit('ready');
+  };
+  const loaded = await loadApprovedArticleHandoff(NOW, { redisFactory: () => redis, secret: SECRET });
+  assert.equal(loaded.handoff, null);
+  assert.equal(connectCalls, 1);
+  assert.deepEqual(redis.getCalls, [`${HANDOFF_PREFIX}${DATE}`]);
+  assert.equal(redis.quitCalls, 1);
+  assert.equal(redis.listenerCount('ready'), 0);
+  assert.equal(redis.listenerCount('error'), 0);
+  assert.equal(redis.listenerCount('end'), 0);
+});
+
+test('loader and daily guard wait for an already-connecting client', async () => {
+  for (const operation of ['load', 'claim']) {
+    const redis = new FakeRedis();
+    redis.status = 'connecting';
+    const pending = operation === 'load'
+      ? loadApprovedArticleHandoff(NOW, { redisFactory: () => redis, secret: SECRET })
+      : openDailyUploadGuard(signedHandoff(), { redisFactory: () => redis });
+    assert.deepEqual(redis.getCalls, []);
+    assert.deepEqual(redis.setCalls, []);
+    redis.status = 'ready';
+    redis.emit('ready');
+    const result = await pending;
+    if (operation === 'claim') {
+      assert.equal(result.acquired, true);
+      assert.deepEqual(redis.setCalls[0].slice(2), ['NX']);
+      await result.markFailedBeforeUpload(new Error('test cleanup before upload'));
+    }
+    assert.equal(redis.quitCalls, 1);
+    assert.equal(redis.listenerCount('ready'), 0);
+    assert.equal(redis.listenerCount('error'), 0);
+    assert.equal(redis.listenerCount('end'), 0);
+  }
+});
+
+test('connection errors, early end, and timeout fail closed before GET or claim and close the client', async () => {
+  for (const operation of ['load', 'claim']) {
+    for (const failure of ['error', 'end', 'timeout']) {
+      const redis = new FakeRedis();
+      redis.status = 'connecting';
+      const options = { redisFactory: () => redis, secret: SECRET, redisReadyTimeoutMs: 10 };
+      const pending = operation === 'load'
+        ? loadApprovedArticleHandoff(NOW, options)
+        : openDailyUploadGuard(signedHandoff(), options);
+      if (failure !== 'timeout') redis.emit(failure, new Error('secret-bearing transport error'));
+      await assert.rejects(pending, (error) => {
+        assert.match(error.message, /Redis.*(?:실패|종료|초과)/);
+        assert.doesNotMatch(error.message, /secret-bearing/);
+        return true;
+      });
+      assert.deepEqual(redis.getCalls, []);
+      assert.deepEqual(redis.setCalls, []);
+      assert.equal(redis.quitCalls, 0);
+      assert.equal(redis.disconnectCalls, 1);
+      assert.equal(redis.listenerCount('ready'), 0);
+      assert.equal(redis.listenerCount('error'), 0);
+      assert.equal(redis.listenerCount('end'), 0);
+    }
+  }
 });
 
 test('owner and separated-slot queue policy require explicit exact environment values', () => {
