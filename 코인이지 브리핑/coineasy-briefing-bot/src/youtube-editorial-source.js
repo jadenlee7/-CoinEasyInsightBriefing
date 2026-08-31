@@ -24,9 +24,11 @@ const HANDOFF_KEYS = Object.freeze([
   'pack_sha256', 'publish_time_kst', 'repository', 'schema_version', 'signature',
   'slug', 'source_sha', 'state', 'youtube',
 ]);
-const YOUTUBE_KEYS = Object.freeze(['duration_seconds', 'enabled', 'metrics', 'scenes', 'source_urls', 'voiceover_ko']);
+const YOUTUBE_KEYS = Object.freeze(['duration_seconds', 'enabled', 'metrics', 'scenes', 'source_urls', 'voiceover_ko', 'voiceover_segments_ko']);
 const SCENE_KEYS = Object.freeze(['kind', 'text']);
 const METRIC_KEYS = Object.freeze(['as_of', 'label', 'source_url', 'value']);
+const VOICE_SEGMENT_LIMITS = Object.freeze([32, 50, 50, 50, 50, 0]);
+const METRIC_MAX_AGE_MS = Object.freeze([6, 6, 30].map((hours) => hours * 60 * 60 * 1000));
 
 function compact(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -84,6 +86,7 @@ function assertHttpsUrl(value, label) {
 }
 
 function assertString(value, label) {
+  if (typeof value !== 'string') throw new Error(`${label}은(는) 문자열이어야 합니다.`);
   const text = compact(value);
   if (!text) throw new Error(`${label}이(가) 필요합니다.`);
   return text;
@@ -105,7 +108,39 @@ function assertExactKeys(value, expectedKeys, label) {
   }
 }
 
-function validateApprovedArticleHandoff(handoff, expectedDate, secret) {
+function strictTimestamp(value, label) {
+  const text = assertString(value, label);
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
+  if (!match) throw new Error(`${label}은(는) 초와 타임존이 있는 ISO 8601 시각이어야 합니다.`);
+  const day = new Date(`${match[1]}T00:00:00Z`);
+  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== match[1]
+      || Number(match[2]) > 23 || Number(match[3]) > 59 || Number(match[4]) > 59
+      || Number(match[7] || 0) > 23 || Number(match[8] || 0) > 59) {
+    throw new Error(`${label}에 유효하지 않은 날짜 또는 시각이 있습니다.`);
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) throw new Error(`${label} 시각을 파싱할 수 없습니다.`);
+  return parsed;
+}
+
+function assertMetricValue(value, index) {
+  const text = assertBoundedString(value, `youtube.metrics[${index}].value`, 1, 32);
+  const patterns = [
+    /^\$(?:(?:0|[1-9][0-9]*)|(?:[1-9][0-9]{0,2}(?:,[0-9]{3})+))(?:\.[0-9]{1,2})?$/,
+    /^[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?%$/,
+    /^(?:0|[1-9]\d?|100)$/,
+  ];
+  if (!patterns[index].test(text)) throw new Error(`youtube.metrics[${index}].value가 검증 가능한 숫자 형식이 아닙니다.`);
+  const numeric = Number(text.replace(/[$,%]/g, ''));
+  if (!Number.isFinite(numeric) || (index === 0 && numeric <= 0) || (index === 1 && numeric <= -100)) {
+    throw new Error(`youtube.metrics[${index}].value가 허용 범위를 벗어났습니다.`);
+  }
+}
+
+function validateApprovedArticleHandoff(handoff, expectedDate, secret, now = new Date()) {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime()) || kstDate(now) !== expectedDate) {
+    throw new Error('현재 KST 날짜와 handoff 검증 날짜가 일치해야 합니다.');
+  }
   if (!isPlainObject(handoff)) throw new Error('아티클 handoff는 JSON 객체여야 합니다.');
   if (!verifyHandoffSignature(handoff, secret)) throw new Error('아티클 handoff 서명이 일치하지 않습니다.');
   assertExactKeys(handoff, HANDOFF_KEYS, 'handoff');
@@ -141,10 +176,9 @@ function validateApprovedArticleHandoff(handoff, expectedDate, secret) {
   ) {
     throw new Error('canonical_naver_url은 https://blog.naver.com/coineasy/<logNo> 형식이어야 합니다.');
   }
-  const issuedAt = assertString(handoff.issued_at, 'issued_at');
-  const issuedDate = new Date(issuedAt);
-  if (Number.isNaN(issuedDate.getTime())) throw new Error('issued_at은 ISO 시간이어야 합니다.');
+  const issuedDate = strictTimestamp(handoff.issued_at, 'issued_at');
   if (kstDate(issuedDate) !== expectedDate) throw new Error('issued_at의 KST 날짜가 date_kst와 다릅니다.');
+  if (issuedDate > now) throw new Error('issued_at이 현재보다 미래입니다.');
 
   const youtube = handoff.youtube;
   if (!isPlainObject(youtube)) throw new Error('youtube 검토 계약이 필요합니다.');
@@ -163,6 +197,20 @@ function validateApprovedArticleHandoff(handoff, expectedDate, secret) {
   });
   const voiceover = assertBoundedString(youtube.voiceover_ko, 'youtube.voiceover_ko', 20, 240);
   if (!/[가-힣]/.test(voiceover)) throw new Error('youtube.voiceover_ko는 한국어 음성 원고여야 합니다.');
+  if (!Array.isArray(youtube.voiceover_segments_ko) || youtube.voiceover_segments_ko.length !== 6) {
+    throw new Error('youtube.voiceover_segments_ko는 정확히 6개여야 합니다.');
+  }
+  const segments = youtube.voiceover_segments_ko.map((segment, index) => {
+    if (typeof segment !== 'string') throw new Error(`음성 장면 ${index + 1}은 문자열이어야 합니다.`);
+    const text = compact(segment);
+    if (index === 5) {
+      if (text !== '') throw new Error('마지막 CTA 장면은 무음이어야 합니다.');
+    } else if (!/[가-힣]/.test(text) || text.length > VOICE_SEGMENT_LIMITS[index]) {
+      throw new Error(`음성 장면 ${index + 1}이 한국어 또는 길이 계약과 다릅니다.`);
+    }
+    return text;
+  });
+  if (segments.filter(Boolean).join(' ') !== voiceover) throw new Error('장면별 음성과 승인된 전체 원고가 다릅니다.');
 
   if (!Array.isArray(youtube.source_urls) || youtube.source_urls.length === 0 || youtube.source_urls.length > 20) {
     throw new Error('youtube.source_urls는 1-20개여야 합니다.');
@@ -178,12 +226,11 @@ function validateApprovedArticleHandoff(handoff, expectedDate, secret) {
       throw new Error(`youtube.metrics[${index}].label이 고정 순서와 다릅니다.`);
     }
     assertExactKeys(metric, METRIC_KEYS, `youtube.metrics[${index}]`);
-    assertBoundedString(metric.value, `youtube.metrics[${index}].value`, 1, 120);
-    const asOf = assertString(metric.as_of, `youtube.metrics[${index}].as_of`);
-    const parsedAsOf = new Date(asOf);
-    if (Number.isNaN(parsedAsOf.getTime()) || (/T/.test(asOf) && !/(?:Z|[+-]\d{2}:\d{2})$/.test(asOf))) {
-      throw new Error(`youtube.metrics[${index}].as_of는 타임존이 포함된 ISO 8601 날짜여야 합니다.`);
-    }
+    assertMetricValue(metric.value, index);
+    const parsedAsOf = strictTimestamp(metric.as_of, `youtube.metrics[${index}].as_of`);
+    if (kstDate(parsedAsOf) !== expectedDate) throw new Error(`youtube.metrics[${index}].as_of는 팩의 KST 날짜여야 합니다.`);
+    if (parsedAsOf > issuedDate || parsedAsOf > now) throw new Error(`youtube.metrics[${index}].as_of가 handoff 발행 또는 현재보다 미래입니다.`);
+    if (now - parsedAsOf > METRIC_MAX_AGE_MS[index]) throw new Error(`youtube.metrics[${index}] 기준 시각이 오래되어 게시할 수 없습니다.`);
     const metricSource = assertHttpsUrl(metric.source_url, `youtube.metrics[${index}].source_url`);
     if (!sourceUrls.includes(metricSource)) {
       throw new Error(`youtube.metrics[${index}].source_url이 source_urls에 없습니다.`);
@@ -225,14 +272,15 @@ function buildEditorialFromHandoff(handoff) {
       sourceUrls: [...handoff.youtube.source_urls],
       sourceLabel: sourceLabel(sourceUrl),
       voiceoverKo: compact(handoff.youtube.voiceover_ko),
+      voiceoverSegmentsKo: handoff.youtube.voiceover_segments_ko.map(compact),
     },
     texts: {
       btc_price: compact(metrics.BTC.value),
-      btc_change: compact(metrics.BTC.as_of),
+      btc_as_of: compact(metrics.BTC.as_of),
       kimchi_premium: compact(metrics['김치프리미엄'].value),
       kimchi_as_of: compact(metrics['김치프리미엄'].as_of),
       fear_value: compact(metrics['공포탐욕'].value),
-      fear_label: compact(metrics['공포탐욕'].as_of),
+      fear_as_of: compact(metrics['공포탐욕'].as_of),
     },
     youtube: handoff.youtube,
   };
@@ -278,7 +326,7 @@ async function loadApprovedArticleHandoff(now = new Date(), options = {}) {
     if (!raw) return { date, handoff: null, payload: null };
     let handoff;
     try { handoff = JSON.parse(raw); } catch (_) { throw new Error('아티클 handoff JSON을 파싱할 수 없습니다.'); }
-    validateApprovedArticleHandoff(handoff, date, secret);
+    validateApprovedArticleHandoff(handoff, date, secret, now);
     return { date, handoff, payload: buildEditorialFromHandoff(handoff) };
   } catch (error) {
     throw new Error(`승인된 아티클 handoff 로드 실패: ${error.message}`);
@@ -361,12 +409,23 @@ async function openDailyUploadGuard(handoff, options = {}) {
       if (!uploadStarted) throw new Error('업로드 시작 기록 없이 완료할 수 없습니다.');
       const videoId = assertString(video?.videoId, 'videoId');
       const videoUrl = assertHttpsUrl(video?.videoUrl, 'videoUrl');
+      const verification = video?.verification;
+      if (!/^[A-Za-z0-9_-]{11}$/.test(videoId) || videoUrl !== `https://www.youtube.com/shorts/${videoId}`
+          || verification?.readbackVerified !== true || verification?.method !== 'youtube.videos.list'
+          || !/^UC[A-Za-z0-9_-]{22}$/.test(verification?.channelId || '')
+          || !['public', 'unlisted', 'private'].includes(verification?.privacyStatus)
+          || verification?.uploadStatus !== 'processed' || verification?.processingStatus !== 'succeeded'
+          || verification?.publicStateVerified !== (verification?.privacyStatus === 'public')) {
+        throw new Error('실제 채널·처리 완료·공개 상태 readback 없이 완료 영수증을 기록할 수 없습니다.');
+      }
+      strictTimestamp(verification.verifiedAt, 'verification.verifiedAt');
       const completedAt = new Date().toISOString();
       const receipt = {
         ...persistentRecordBase(handoff, token),
         state: 'uploaded',
         video_id: videoId,
         video_url: videoUrl,
+        verification,
         completed_at: completedAt,
         updated_at: completedAt,
       };
@@ -378,7 +437,12 @@ async function openDailyUploadGuard(handoff, options = {}) {
     },
     async markUncertain(error) {
       const message = compact(error?.message || error).slice(0, 500);
-      await updateClaim('external_state_uncertain', { error: message, uncertain_at: new Date().toISOString() });
+      const knownId = typeof error?.videoId === 'string' && /^[A-Za-z0-9_-]{11}$/.test(error.videoId) ? error.videoId : null;
+      await updateClaim('external_state_uncertain', {
+        error: message,
+        ...(knownId ? { video_id: knownId, video_url: `https://www.youtube.com/shorts/${knownId}` } : {}),
+        uncertain_at: new Date().toISOString(),
+      });
       await finish();
     },
     async markFailedBeforeUpload(error) {

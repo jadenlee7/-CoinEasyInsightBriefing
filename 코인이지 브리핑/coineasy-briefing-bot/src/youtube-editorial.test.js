@@ -25,7 +25,7 @@ const payload = {
     action: '원문과 시행일을 확인하세요',
     sourceLabel: 'fsc.go.kr',
     sourceUrl: 'https://fsc.go.kr/example',
-    sourceUrls: ['https://fsc.go.kr/example'],
+    sourceUrls: ['https://fsc.go.kr/example', 'https://example.com/btc', 'https://example.com/kimp', 'https://example.com/fear'],
     sourceCta: '공식 출처와 Telegram에서 확인하세요',
     marketContext: 'BTC·김프·공포탐욕을 함께 확인합니다',
     voiceoverKo: '발행자 요건과 이용자 보호가 핵심입니다. 원문과 시행일을 확인하세요. 출처는 fsc.go.kr입니다.',
@@ -35,7 +35,14 @@ const payload = {
     packSha256: 'b'.repeat(64),
     canonicalNaverUrl: 'https://blog.naver.com/coineasy/223999999999',
   },
-  youtube: { duration_seconds: 32 },
+  youtube: {
+    duration_seconds: 32,
+    metrics: [
+      { label: 'BTC', value: '$63,500', as_of: '2026-08-04T09:00:00Z', source_url: 'https://example.com/btc' },
+      { label: '김치프리미엄', value: '-0.3%', as_of: '2026-08-04T09:00:00Z', source_url: 'https://example.com/kimp' },
+      { label: '공포탐욕', value: '28', as_of: '2026-08-04T00:00:00Z', source_url: 'https://example.com/fear' },
+    ],
+  },
   texts: {
     btc_price: '$63,500', btc_change: '+0.2%',
     fear_value: '28', fear_label: 'Fear', kimchi_premium: '-0.3%',
@@ -52,14 +59,14 @@ test('editorial header uses the official transparent Main Orange wordmark', asyn
     'utf8',
   );
   const logo = await readFile(
-    new URL('../../../coineasy_brand/assets/brand/logo_main_orange_transparent.png', import.meta.url),
+    new URL('../../../coineasy_brand/assets/brand/figma-main-orange-logo.svg', import.meta.url),
   );
 
-  assert.match(generator, /loadImage\(path\.join\(BRAND_ASSET_DIR, 'logo_main_orange_transparent\.png'\)\)/);
+  assert.match(generator, /loadImage\(path\.join\(BRAND_ASSET_DIR, 'figma-main-orange-logo\.svg'\)\)/);
   assert.doesNotMatch(generator, /loadImage\(path\.join\(BRAND_ASSET_DIR, 'logo_ink\.png'\)\)/);
   assert.equal(
     createHash('sha256').update(logo).digest('hex'),
-    '23e9d2f922660d1c7309791e0eefabd5d78a74ccabe50435c9b9e3d63cfd8aed',
+    '69a1aace1a426cfe25398806a41a9e3f600b22f1001b126043255d99f5183394',
   );
 });
 
@@ -96,6 +103,7 @@ test('YouTube credentials require all explicit OAuth values', () => {
   assert.equal(assertYouTubeCredentials({
     YT_CLIENT_ID: 'id', YT_CLIENT_SECRET: 'secret', YT_REFRESH_TOKEN: 'refresh',
     YT_PRIVACY_STATUS: 'unlisted',
+    COINEASY_YT_CHANNEL_ID: 'UC' + 'a'.repeat(22),
   }), true);
   assert.throws(() => assertYouTubeCredentials({
     YT_CLIENT_ID: 'id', YT_CLIENT_SECRET: 'secret', YT_REFRESH_TOKEN: 'refresh',
@@ -112,7 +120,7 @@ test('uploader calls videos.insert exactly once and returns video identity', asy
       async insert(request) {
         calls += 1;
         assert.deepEqual(request.part, ['snippet', 'status']);
-        return { data: { id: 'Only_One-1' } };
+        return { data: { id: 'Only_One-01' } };
       },
     },
   };
@@ -120,8 +128,8 @@ test('uploader calls videos.insert exactly once and returns video identity', asy
     const result = await uploadOnce(youtube, videoPath, buildVideoMetadata(payload));
     assert.equal(calls, 1);
     assert.deepEqual(result, {
-      videoId: 'Only_One-1',
-      videoUrl: 'https://www.youtube.com/shorts/Only_One-1',
+      videoId: 'Only_One-01',
+      videoUrl: 'https://www.youtube.com/shorts/Only_One-01',
     });
   } finally {
     await rm(dir, { recursive: true, force: true });

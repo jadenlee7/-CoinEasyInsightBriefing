@@ -23,6 +23,14 @@ import {
 const INDEX_SOURCE = readFileSync(new URL('./index.js', import.meta.url), 'utf8');
 const SECRET = 'test-only-handoff-secret';
 const DATE = '2026-08-31';
+const NOW = new Date('2026-08-31T09:05:00Z');
+const VOICE_SEGMENTS = ['스테이블코인에서 볼 것은요.', '발행자와 보호 요건입니다.', '조건은 아직 확정이 아닙니다.', '시장 수치도 기준 시각을 보세요.', '오늘은 법안 원문을 확인하세요.', ''];
+const VERIFIED_VIDEO = {
+  videoId: 'Video_Id-12', videoUrl: 'https://www.youtube.com/shorts/Video_Id-12',
+  verification: { channelId: `UC${'a'.repeat(22)}`, privacyStatus: 'public',
+    uploadStatus: 'processed', processingStatus: 'succeeded', readbackVerified: true,
+    publicStateVerified: true, method: 'youtube.videos.list', verifiedAt: '2026-08-31T09:07:00Z' },
+};
 
 function signedHandoff(overrides = {}) {
   const base = {
@@ -49,7 +57,8 @@ function signedHandoff(overrides = {}) {
         { kind: 'action', text: '법안 원문과 시행일을 확인하세요.' },
         { kind: 'source_cta', text: '공식 출처와 CoinEasy Telegram에서 확인하세요.' },
       ],
-      voiceover_ko: '원화 스테이블코인의 발행자 요건과 이용자 보호를 확인하세요. 세부 조건은 아직 확정이 아닙니다.',
+      voiceover_ko: VOICE_SEGMENTS.filter(Boolean).join(' '),
+      voiceover_segments_ko: [...VOICE_SEGMENTS],
       source_urls: [
         'https://www.fsc.go.kr/example',
         'https://api.exchange.example/btc',
@@ -119,14 +128,18 @@ test('cross-language HMAC vector matches the EasyFarm producer', () => {
 
 test('strict handoff validation and mapping use only exact approved scenes and metrics', () => {
   const handoff = signedHandoff();
-  assert.equal(validateApprovedArticleHandoff(handoff, DATE, SECRET), handoff);
+  assert.equal(validateApprovedArticleHandoff(handoff, DATE, SECRET, NOW), handoff);
   const payload = buildEditorialFromHandoff(handoff);
   assert.equal(payload.editorial.headline, handoff.youtube.scenes[0].text);
   assert.equal(payload.editorial.fact, handoff.youtube.scenes[1].text);
   assert.equal(payload.editorial.voiceoverKo, handoff.youtube.voiceover_ko);
+  assert.deepEqual(payload.editorial.voiceoverSegmentsKo, handoff.youtube.voiceover_segments_ko);
   assert.equal(payload.texts.btc_price, '$63,500');
   assert.equal(payload.texts.kimchi_premium, '-0.3%');
   assert.equal(payload.texts.fear_value, '28');
+  assert.equal(payload.texts.fear_as_of, handoff.youtube.metrics[2].as_of);
+  assert.equal(payload.texts.fear_label, undefined);
+  assert.equal(payload.texts.btc_change, undefined);
   assert.equal(payload.article.canonicalNaverUrl, handoff.canonical_naver_url);
 });
 
@@ -146,7 +159,56 @@ test('handoff rejects reordered scenes, incomplete metrics, wrong date and non-N
     const value = structuredClone(base);
     mutate(value);
     value.signature = calculateHandoffSignature(value, SECRET);
-    assert.throws(() => validateApprovedArticleHandoff(value, DATE, SECRET));
+    assert.throws(() => validateApprovedArticleHandoff(value, DATE, SECRET, NOW));
+  }
+});
+
+test('placeholder, out-of-range and ambiguous market values fail closed', () => {
+  for (const [index, values] of [
+    [0, ['미확보', '$0', '$-1', '100,000달러', '$1,23', '$01', '$1.234', 'NaN', 63500]],
+    [1, ['미확보', '-100%', '-101%', '1.2', '01%', 'Infinity%', null]],
+    [2, ['확인 중', '-1', '101', '50.5', '중립 50', '01', 50]],
+  ]) {
+    for (const invalid of values) {
+      const value = signedHandoff();
+      value.youtube.metrics[index].value = invalid;
+      value.signature = calculateHandoffSignature(value, SECRET);
+      assert.throws(() => validateApprovedArticleHandoff(value, DATE, SECRET, NOW));
+    }
+  }
+});
+
+test('metric timestamps need valid calendar, exact day, no future and bounded age', () => {
+  for (const invalid of ['2026-08-31', '2026-08-31T08:00:00', '2026-08-31T08:00Z',
+    '2026-02-30T08:00:00Z', '2026-08-31T24:00:00Z', '2026-08-31T08:00:00+24:00',
+    '2026-08-31T08:00:01Z', '2026-08-31T03:04:59Z', '2026-08-30T00:00:00Z']) {
+    const value = signedHandoff();
+    value.youtube.metrics[0].as_of = invalid;
+    value.signature = calculateHandoffSignature(value, SECRET);
+    assert.throws(() => validateApprovedArticleHandoff(value, DATE, SECRET, NOW), invalid);
+  }
+  const boundary = signedHandoff();
+  boundary.youtube.metrics[0].as_of = '2026-08-31T03:05:00Z';
+  boundary.signature = calculateHandoffSignature(boundary, SECRET);
+  assert.equal(validateApprovedArticleHandoff(boundary, DATE, SECRET, NOW), boundary);
+  assert.throws(() => validateApprovedArticleHandoff(boundary, DATE, SECRET, new Date('2026-08-31T09:05:00.001Z')));
+  assert.throws(() => validateApprovedArticleHandoff(signedHandoff(), DATE, SECRET, new Date('2026-08-31T07:59:59Z')));
+  assert.throws(() => validateApprovedArticleHandoff(signedHandoff(), DATE, SECRET, new Date('2026-09-01T09:05:00Z')));
+});
+
+test('per-scene approved narration cannot be missing, rewritten, overflowing or speak over CTA', () => {
+  for (const mutate of [
+    (value) => { delete value.youtube.voiceover_segments_ko; },
+    (value) => { value.youtube.voiceover_segments_ko.pop(); },
+    (value) => { value.youtube.voiceover_segments_ko[0] = ''; },
+    (value) => { value.youtube.voiceover_segments_ko[1] = '새 승인 없는 다른 내용'; },
+    (value) => { value.youtube.voiceover_segments_ko[0] = '가'.repeat(33); },
+    (value) => { value.youtube.voiceover_segments_ko[5] = '구독하세요'; },
+  ]) {
+    const value = signedHandoff();
+    mutate(value);
+    value.signature = calculateHandoffSignature(value, SECRET);
+    assert.throws(() => validateApprovedArticleHandoff(value, DATE, SECRET, NOW));
   }
 });
 
@@ -193,6 +255,8 @@ test('time and queue gates precede handoff loading and never mutate legacy reser
   assert.ok(INDEX_SOURCE.indexOf('isApprovedQueuePolicy()') < INDEX_SOURCE.indexOf('loadApprovedArticleHandoff(startTs)'));
   assert.ok(INDEX_SOURCE.indexOf('isArticleUploadWindow(startTs)') < INDEX_SOURCE.indexOf('loadApprovedArticleHandoff(startTs)'));
   assert.match(INDEX_SOURCE, /cron\.schedule\('5 9 \* \* \*'/);
+  assert.ok(INDEX_SOURCE.indexOf('await preflightYouTubeUpload()') < INDEX_SOURCE.indexOf('await openDailyUploadGuard(handoff)'));
+  assert.ok(INDEX_SOURCE.indexOf('isArticleUploadWindow(uploadTs)') < INDEX_SOURCE.indexOf('await guard.markUploadStarted()'));
   assert.doesNotMatch(INDEX_SOURCE, /videos\.(?:delete|update)|COINEASY_YT_LEGACY_QUEUE_CLEARED/);
 });
 
@@ -217,16 +281,33 @@ test('claim and receipt are persistent, include article hashes and verified vide
   assert.equal(claim.video_url, null);
 
   await guard.markUploadStarted();
-  await guard.markDone({ videoId: 'Video_Id-1', videoUrl: 'https://www.youtube.com/shorts/Video_Id-1' });
+  await guard.markDone(VERIFIED_VIDEO);
   const receipt = JSON.parse(redis.values.get(`${RECEIPT_PREFIX}${DATE}`));
   assert.equal(receipt.slug, handoff.slug);
   assert.equal(receipt.pack_sha256, handoff.pack_sha256);
-  assert.equal(receipt.video_id, 'Video_Id-1');
-  assert.equal(receipt.video_url, 'https://www.youtube.com/shorts/Video_Id-1');
+  assert.equal(receipt.video_id, VERIFIED_VIDEO.videoId);
+  assert.equal(receipt.video_url, VERIFIED_VIDEO.videoUrl);
+  assert.deepEqual(receipt.verification, VERIFIED_VIDEO.verification);
   assert.equal(receipt.slot_kst, ARTICLE_SLOT_KST);
   assert.equal(receipt.queue_policy, APPROVED_QUEUE_POLICY);
   const receiptSet = redis.setCalls.find((call) => call[0] === `${RECEIPT_PREFIX}${DATE}`);
   assert.deepEqual(receiptSet.slice(2), ['NX']);
+});
+
+test('insert ID alone cannot create a success receipt and uncertain state retains known ID', async () => {
+  const redis = new FakeRedis();
+  const guard = await openDailyUploadGuard(signedHandoff(), { redisFactory: () => redis, token: 'known-id' });
+  await guard.markUploadStarted();
+  await assert.rejects(guard.markDone({ videoId: VERIFIED_VIDEO.videoId, videoUrl: VERIFIED_VIDEO.videoUrl }), /readback/);
+  assert.equal(redis.values.has(`${RECEIPT_PREFIX}${DATE}`), false);
+  const error = Object.assign(new Error('processing readback unavailable'), { videoId: VERIFIED_VIDEO.videoId });
+  await guard.markUncertain(error);
+  const claim = JSON.parse(redis.values.get(`${CLAIM_PREFIX}${DATE}`));
+  assert.equal(claim.state, 'external_state_uncertain');
+  assert.equal(claim.video_id, VERIFIED_VIDEO.videoId);
+  assert.equal(claim.video_url, VERIFIED_VIDEO.videoUrl);
+  const next = await openDailyUploadGuard(signedHandoff(), { redisFactory: () => redis, token: 'never-retry' });
+  assert.equal(next.acquired, false);
 });
 
 test('any upload error creates a persistent uncertain fence and a second run cannot retry', async () => {

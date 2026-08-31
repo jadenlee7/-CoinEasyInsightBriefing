@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV COINEASY_BRAND_DIR=/app/coineasy_brand
 
                                                         # Install Edge TTS (Korean TTS engine)
-                                                        RUN pip3 install --break-system-packages edge-tts
+                                                        RUN pip3 install --break-system-packages edge-tts==7.2.8
 
                                                         # Cache bust: change this value to force a fresh build
                                                         ARG CACHE_BUST=20260629v2-figma-retry
@@ -72,7 +72,7 @@ ENV COINEASY_BRAND_DIR=/app/coineasy_brand
 RUN cp -r /repo/coineasy_brand /app/coineasy_brand && ls /app/coineasy_brand/templates/
                                                                                                                                                             
                                                                                                                                                             # Install dependencies
-                                                                                                                                                            RUN npm install --only=production
+                                                                                                                                                            RUN npm ci --omit=dev && node --test src/youtube-editorial-renderer.test.js
                                                                                                                                                             
                                                                                                                                                             # Default command
                                                                                                                                                             CMD ["npm", "start"]

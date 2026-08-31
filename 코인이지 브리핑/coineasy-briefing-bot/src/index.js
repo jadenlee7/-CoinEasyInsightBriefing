@@ -214,13 +214,14 @@ async function runYouTubeShorts(session) {
   try {
     const startTs = new Date();
     const { generateEditorialShort } = await import('./youtube-editorial-generator.js');
-    const { assertYouTubeCredentials, uploadToYouTube } = await import('./youtube-uploader-new.js');
+    const { preflightYouTubeUpload, uploadToYouTube } = await import('./youtube-uploader-new.js');
     const {
       isExplicitYouTubeOwner,
       isApprovedQueuePolicy,
       isArticleUploadWindow,
       loadApprovedArticleHandoff,
       openDailyUploadGuard,
+      validateApprovedArticleHandoff,
     } = await import('./youtube-editorial-source.js');
 
     if (!isExplicitYouTubeOwner()) {
@@ -244,9 +245,8 @@ async function runYouTubeShorts(session) {
       return { success: true, skipped: true, reason: 'approved-article-handoff-missing' };
     }
 
-    // Missing OAuth is a known pre-request failure and must not consume a
-    // persistent daily claim.
-    assertYouTubeCredentials();
+    // Missing OAuth or wrong channel must fail before consuming the daily claim.
+    const preflight = await preflightYouTubeUpload();
 
     guard = await openDailyUploadGuard(handoff);
     if (!guard.acquired) {
@@ -258,9 +258,14 @@ async function runYouTubeShorts(session) {
     videoPath = await generateEditorialShort(payload);
     console.log(`  ✓ 영상 생성 완료: ${videoPath}`);
 
+    // Rendering/voice synthesis may take time. Recheck the actual upload start
+    // against the date/window and the same immutable approved metric snapshot.
+    const uploadTs = new Date();
+    if (!isArticleUploadWindow(uploadTs)) throw new Error('렌더 완료 시각이 기사형 업로드 허용 창을 벗어났습니다.');
+    validateApprovedArticleHandoff(handoff, date, process.env.COINEASY_YOUTUBE_HANDOFF_SECRET, uploadTs);
     await guard.markUploadStarted();
-    const video = await uploadToYouTube(videoPath, payload, startTs);
-    console.log(`  ✓ YouTube 업로드 완료: ${video.videoUrl}`);
+    const video = await uploadToYouTube(videoPath, payload, startTs, { preflight });
+    console.log(`  ✓ YouTube 처리·공개 상태 API 확인: ${video.videoUrl}`);
     await guard.markDone(video);
     guard = null;
 
