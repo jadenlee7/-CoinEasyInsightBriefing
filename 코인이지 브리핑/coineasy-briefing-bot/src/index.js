@@ -212,11 +212,13 @@ async function runYouTubeShorts(session) {
   let videoPath = null;
   let guard = null;
   try {
+    const startTs = new Date();
     const { generateEditorialShort } = await import('./youtube-editorial-generator.js');
     const { assertYouTubeCredentials, uploadToYouTube } = await import('./youtube-uploader-new.js');
     const {
       isExplicitYouTubeOwner,
-      isLegacyQueueCleared,
+      isApprovedQueuePolicy,
+      isArticleUploadWindow,
       loadApprovedArticleHandoff,
       openDailyUploadGuard,
     } = await import('./youtube-editorial-source.js');
@@ -225,12 +227,15 @@ async function runYouTubeShorts(session) {
       console.log('⏭️ YouTube Shorts 스킵: COINEASY_YT_OWNER=insight-briefing을 명시적으로 설정해야 합니다.');
       return { success: true, skipped: true, reason: 'owner-not-explicit' };
     }
-    if (!isLegacyQueueCleared()) {
-      console.log('⏭️ YouTube Shorts 스킵: 기존 예약 큐 정리 영수증 없이 두 번째 일일 업로더를 켜지 않습니다.');
-      return { success: true, skipped: true, reason: 'legacy-queue-not-cleared' };
+    if (!isApprovedQueuePolicy()) {
+      console.log('⏭️ YouTube Shorts 스킵: 18:05 기사형·20:30 기존 예약 공존 정책을 명시해야 합니다.');
+      return { success: true, skipped: true, reason: 'queue-policy-not-explicit' };
+    }
+    if (!isArticleUploadWindow(startTs)) {
+      console.log('⏭️ YouTube Shorts 스킵: 기사형 업로드는 KST 18:05–18:14에만 시작합니다.');
+      return { success: true, skipped: true, reason: 'outside-article-upload-window' };
     }
 
-    const startTs = new Date();
     console.log(`[${startTs.toISOString()}] 🎬 YouTube 기사형 데일리 쇼츠 파이프라인 시작`);
 
     const { date, handoff, payload } = await loadApprovedArticleHandoff(startTs);

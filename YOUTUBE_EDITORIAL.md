@@ -3,6 +3,8 @@
 `@CoinEasy` has one Shorts writer: **CoinEasyInsightBriefing**.
 
 - Schedule: KST 18:05, once per day.
+- Coexistence: existing KST 20:30 YouTube Studio reservations remain unchanged.
+  The article uploader may start only from 18:05:00 through 18:14:59 KST.
 - Source: the exact signed, approved and Naver-published article handoff at
   `coineasy:youtube:article-handoff:YYYY-MM-DD` in shared Redis.
 - Format: one claim, one verified fact, why it matters, three market context
@@ -20,7 +22,7 @@
 
 ```text
 COINEASY_YT_OWNER=insight-briefing
-COINEASY_YT_LEGACY_QUEUE_CLEARED=1   # only after separate queue reconciliation approval
+COINEASY_YT_QUEUE_POLICY=coexist-article-1805-legacy-2030
 COINEASY_YOUTUBE_HANDOFF_SECRET=...  # shared HMAC secret
 COINEASY_YOUTUBE_HANDOFF_REDIS_URL=... # preferred; REDIS_URL is a compatibility fallback
 YT_CLIENT_ID=...
@@ -37,9 +39,12 @@ and `coineasy-meme-engine`. Their old uploaders remain available as explicit
 fallbacks, but are disabled by default. Meme approvals continue to Drive and
 the TikTok uploader without posting another YouTube Short.
 
-`COINEASY_YT_LEGACY_QUEUE_CLEARED` intentionally remains unset until the
-existing scheduled Shorts queue has been reconciled under separate approval.
-Without it the 18:05 job exits before reading or uploading content.
+`COINEASY_YT_QUEUE_POLICY` must exactly approve the separated-slot policy.
+The 18:05 article uploader exits before Redis reads, rendering, or upload when
+the value is missing or when the current KST time is outside 18:05–18:14.
+Existing 20:30 reservations are not read, changed, cancelled, or rescheduled.
+During coexistence, one 18:05 article Short and one existing 20:30 reserved
+Short can become public on the same date.
 
 ## Signed article Redis contract
 

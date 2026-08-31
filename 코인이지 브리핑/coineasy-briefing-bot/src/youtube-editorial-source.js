@@ -6,6 +6,10 @@ const HANDOFF_PREFIX = 'coineasy:youtube:article-handoff:';
 const CLAIM_PREFIX = 'coineasy:youtube:article-claim:';
 const RECEIPT_PREFIX = 'coineasy:youtube:article-receipt:';
 const EXPECTED_OWNER = 'insight-briefing';
+const ARTICLE_SLOT_KST = '18:05';
+const APPROVED_QUEUE_POLICY = 'coexist-article-1805-legacy-2030';
+const ARTICLE_WINDOW_START_MINUTE = (18 * 60) + 5;
+const ARTICLE_WINDOW_END_MINUTE = (18 * 60) + 14;
 const SCENE_KINDS = Object.freeze([
   'headline',
   'verified_fact',
@@ -249,8 +253,16 @@ function isExplicitYouTubeOwner(env = process.env) {
   return compact(env.COINEASY_YT_OWNER).toLowerCase() === EXPECTED_OWNER;
 }
 
-function isLegacyQueueCleared(env = process.env) {
-  return compact(env.COINEASY_YT_LEGACY_QUEUE_CLEARED) === '1';
+function isApprovedQueuePolicy(env = process.env) {
+  return compact(env.COINEASY_YT_QUEUE_POLICY) === APPROVED_QUEUE_POLICY;
+}
+
+function isArticleUploadWindow(now = new Date()) {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) return false;
+  const kst = new Date(now.getTime() + KST_OFFSET_MS);
+  const minuteOfDay = (kst.getUTCHours() * 60) + kst.getUTCMinutes();
+  return minuteOfDay >= ARTICLE_WINDOW_START_MINUTE
+    && minuteOfDay <= ARTICLE_WINDOW_END_MINUTE;
 }
 
 async function loadApprovedArticleHandoff(now = new Date(), options = {}) {
@@ -282,6 +294,8 @@ function handoffDigest(handoff) {
 function persistentRecordBase(handoff, token, now = new Date()) {
   return {
     schema_version: 1,
+    slot_kst: ARTICLE_SLOT_KST,
+    queue_policy: APPROVED_QUEUE_POLICY,
     date_kst: handoff.date_kst,
     slug: handoff.slug,
     pack_sha256: handoff.pack_sha256,
@@ -377,6 +391,8 @@ async function openDailyUploadGuard(handoff, options = {}) {
 }
 
 export {
+  APPROVED_QUEUE_POLICY,
+  ARTICLE_SLOT_KST,
   CLAIM_PREFIX,
   HANDOFF_PREFIX,
   METRIC_LABELS,
@@ -386,8 +402,9 @@ export {
   calculateHandoffSignature,
   canonicalJson,
   handoffDigest,
+  isApprovedQueuePolicy,
+  isArticleUploadWindow,
   isExplicitYouTubeOwner,
-  isLegacyQueueCleared,
   kstDate,
   loadApprovedArticleHandoff,
   openDailyUploadGuard,

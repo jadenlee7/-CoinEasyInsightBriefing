@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
+  APPROVED_QUEUE_POLICY,
+  ARTICLE_SLOT_KST,
   CLAIM_PREFIX,
   HANDOFF_PREFIX,
   RECEIPT_PREFIX,
   buildEditorialFromHandoff,
   calculateHandoffSignature,
   canonicalJson,
+  isApprovedQueuePolicy,
+  isArticleUploadWindow,
   isExplicitYouTubeOwner,
-  isLegacyQueueCleared,
   kstDate,
   loadApprovedArticleHandoff,
   openDailyUploadGuard,
@@ -16,6 +20,7 @@ import {
   verifyHandoffSignature,
 } from './youtube-editorial-source.js';
 
+const INDEX_SOURCE = readFileSync(new URL('./index.js', import.meta.url), 'utf8');
 const SECRET = 'test-only-handoff-secret';
 const DATE = '2026-08-31';
 
@@ -165,13 +170,30 @@ test('loader reads only the exact signed date key and does not invent a fallback
   assert.equal(missing.payload, null);
 });
 
-test('owner and legacy queue gates require explicit exact environment values', () => {
+test('owner and separated-slot queue policy require explicit exact environment values', () => {
   assert.equal(isExplicitYouTubeOwner({}), false);
   assert.equal(isExplicitYouTubeOwner({ COINEASY_YT_OWNER: 'insight-briefing' }), true);
   assert.equal(isExplicitYouTubeOwner({ COINEASY_YT_OWNER: 'meme-engine' }), false);
-  assert.equal(isLegacyQueueCleared({}), false);
-  assert.equal(isLegacyQueueCleared({ COINEASY_YT_LEGACY_QUEUE_CLEARED: '1' }), true);
-  assert.equal(isLegacyQueueCleared({ COINEASY_YT_LEGACY_QUEUE_CLEARED: 'true' }), false);
+  assert.equal(isApprovedQueuePolicy({}), false);
+  assert.equal(isApprovedQueuePolicy({ COINEASY_YT_LEGACY_QUEUE_CLEARED: '1' }), false);
+  assert.equal(isApprovedQueuePolicy({ COINEASY_YT_QUEUE_POLICY: APPROVED_QUEUE_POLICY }), true);
+  assert.equal(isApprovedQueuePolicy({ COINEASY_YT_QUEUE_POLICY: 'coexist' }), false);
+});
+
+test('article upload window is only KST 18:05:00 through 18:14:59', () => {
+  assert.equal(ARTICLE_SLOT_KST, '18:05');
+  assert.equal(isArticleUploadWindow(new Date('2026-08-31T09:04:59Z')), false);
+  assert.equal(isArticleUploadWindow(new Date('2026-08-31T09:05:00Z')), true);
+  assert.equal(isArticleUploadWindow(new Date('2026-08-31T09:14:59Z')), true);
+  assert.equal(isArticleUploadWindow(new Date('2026-08-31T09:15:00Z')), false);
+  assert.equal(isArticleUploadWindow(new Date('invalid')), false);
+});
+
+test('time and queue gates precede handoff loading and never mutate legacy reservations', () => {
+  assert.ok(INDEX_SOURCE.indexOf('isApprovedQueuePolicy()') < INDEX_SOURCE.indexOf('loadApprovedArticleHandoff(startTs)'));
+  assert.ok(INDEX_SOURCE.indexOf('isArticleUploadWindow(startTs)') < INDEX_SOURCE.indexOf('loadApprovedArticleHandoff(startTs)'));
+  assert.match(INDEX_SOURCE, /cron\.schedule\('5 9 \* \* \*'/);
+  assert.doesNotMatch(INDEX_SOURCE, /videos\.(?:delete|update)|COINEASY_YT_LEGACY_QUEUE_CLEARED/);
 });
 
 test('claim and receipt are persistent, include article hashes and verified video identity', async () => {
@@ -190,6 +212,8 @@ test('claim and receipt are persistent, include article hashes and verified vide
   assert.equal(claim.slug, handoff.slug);
   assert.equal(claim.pack_sha256, handoff.pack_sha256);
   assert.match(claim.handoff_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(claim.slot_kst, ARTICLE_SLOT_KST);
+  assert.equal(claim.queue_policy, APPROVED_QUEUE_POLICY);
   assert.equal(claim.video_url, null);
 
   await guard.markUploadStarted();
@@ -199,6 +223,8 @@ test('claim and receipt are persistent, include article hashes and verified vide
   assert.equal(receipt.pack_sha256, handoff.pack_sha256);
   assert.equal(receipt.video_id, 'Video_Id-1');
   assert.equal(receipt.video_url, 'https://www.youtube.com/shorts/Video_Id-1');
+  assert.equal(receipt.slot_kst, ARTICLE_SLOT_KST);
+  assert.equal(receipt.queue_policy, APPROVED_QUEUE_POLICY);
   const receiptSet = redis.setCalls.find((call) => call[0] === `${RECEIPT_PREFIX}${DATE}`);
   assert.deepEqual(receiptSet.slice(2), ['NX']);
 });
