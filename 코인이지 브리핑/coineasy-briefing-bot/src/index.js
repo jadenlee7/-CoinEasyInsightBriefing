@@ -209,54 +209,82 @@ async function runBriefingPipeline() {
 
 // ─── YouTube Shorts pipeline ──────────────────────────
 async function runYouTubeShorts(session) {
-  const owner = (process.env.COINEASY_YT_OWNER || 'insight-briefing').trim().toLowerCase();
-  if (owner !== 'insight-briefing') {
-    console.log(`⏭️ YouTube Shorts 스킵: COINEASY_YT_OWNER=${owner}`);
-    return { success: true, skipped: true, reason: 'not-owner' };
-  }
-
   let videoPath = null;
   let guard = null;
   try {
-    const { generateEditorialShort } = await import('./youtube-editorial-generator.js');
-    const { uploadToYouTube } = await import('./youtube-uploader-new.js');
-    const { buildPayload } = await import('./figma-daily/figmaDataBuilder.js');
-    const { loadDailyEditorial, openDailyUploadGuard } = await import('./youtube-editorial-source.js');
-
     const startTs = new Date();
-    console.log(`[${startTs.toISOString()}] 🎬 YouTube 기사형 데일리 쇼츠 파이프라인 시작`);
+    const { generateEditorialShort } = await import('./youtube-editorial-generator.js');
+    const { preflightYouTubeUpload, uploadToYouTube } = await import('./youtube-uploader-new.js');
+    const {
+      isExplicitYouTubeOwner,
+      isApprovedQueuePolicy,
+      isArticleUploadWindow,
+      loadApprovedArticleHandoff,
+      openDailyUploadGuard,
+      validateApprovedArticleHandoff,
+    } = await import('./youtube-editorial-source.js');
 
-    const { date, editorial } = await loadDailyEditorial(startTs);
-    if (!editorial) {
-      console.warn(`⏭️ ${date} 검증된 일일 브리프가 없어 낮은 품질의 시세형 쇼츠를 대신 올리지 않습니다.`);
-      return { success: true, skipped: true, reason: 'editorial-missing' };
+    if (!isExplicitYouTubeOwner()) {
+      console.log('⏭️ YouTube Shorts 스킵: COINEASY_YT_OWNER=insight-briefing을 명시적으로 설정해야 합니다.');
+      return { success: true, skipped: true, reason: 'owner-not-explicit' };
+    }
+    if (!isApprovedQueuePolicy()) {
+      console.log('⏭️ YouTube Shorts 스킵: 18:05 기사형·20:30 기존 예약 공존 정책을 명시해야 합니다.');
+      return { success: true, skipped: true, reason: 'queue-policy-not-explicit' };
+    }
+    if (!isArticleUploadWindow(startTs)) {
+      console.log('⏭️ YouTube Shorts 스킵: 기사형 업로드는 KST 18:05–18:14에만 시작합니다.');
+      return { success: true, skipped: true, reason: 'outside-article-upload-window' };
     }
 
-    guard = await openDailyUploadGuard(date);
+    console.log(`[${startTs.toISOString()}] 🎬 YouTube 기사형 데일리 쇼츠 파이프라인 시작`);
+
+    const { date, handoff, payload } = await loadApprovedArticleHandoff(startTs);
+    if (!handoff || !payload) {
+      console.warn(`⏭️ ${date} Naver 게시·Telegram 승인·서명이 완료된 아티클 handoff가 없어 무게시합니다.`);
+      return { success: true, skipped: true, reason: 'approved-article-handoff-missing' };
+    }
+
+    // Missing OAuth or wrong channel must fail before consuming the daily claim.
+    const preflight = await preflightYouTubeUpload();
+
+    guard = await openDailyUploadGuard(handoff);
     if (!guard.acquired) {
       console.log(`⏭️ ${date} YouTube Shorts 스킵: ${guard.reason}`);
       return { success: true, skipped: true, reason: guard.reason };
     }
 
-    const payload = await buildPayload(startTs, session);
-    payload.editorial = editorial;
     payload.editorialDate = date;
     videoPath = await generateEditorialShort(payload);
     console.log(`  ✓ 영상 생성 완료: ${videoPath}`);
 
-    const videoUrl = await uploadToYouTube(videoPath, payload, startTs);
-    console.log(`  ✓ YouTube 업로드 완료: ${videoUrl}`);
-    await guard.markDone(videoUrl);
+    // Rendering/voice synthesis may take time. Recheck the actual upload start
+    // against the date/window and the same immutable approved metric snapshot.
+    const uploadTs = new Date();
+    if (!isArticleUploadWindow(uploadTs)) throw new Error('렌더 완료 시각이 기사형 업로드 허용 창을 벗어났습니다.');
+    validateApprovedArticleHandoff(handoff, date, process.env.COINEASY_YOUTUBE_HANDOFF_SECRET, uploadTs);
+    await guard.markUploadStarted();
+    const video = await uploadToYouTube(videoPath, payload, startTs, { preflight });
+    console.log(`  ✓ YouTube 처리·공개 상태 API 확인: ${video.videoUrl}`);
+    await guard.markDone(video);
     guard = null;
 
     const elapsedMs = Date.now() - startTs.getTime();
     console.log(`✅ YouTube 기사형 데일리 쇼츠 완료 (${elapsedMs}ms)`);
-    return { success: true, videoUrl, elapsedMs };
+    return { success: true, videoUrl: video.videoUrl, videoId: video.videoId, elapsedMs };
   } catch (e) {
+    if (guard?.acquired) {
+      try {
+        if (guard.uploadStarted) await guard.markUncertain(e);
+        else await guard.markFailedBeforeUpload(e);
+      } catch (fenceError) {
+        console.error(`✗ YouTube 영구 펜스 기록 실패: ${fenceError.message}`);
+      }
+      guard = null;
+    }
     console.error(`✗ YouTube Shorts 에러: ${e.message}`);
     return { success: false, error: e.message };
   } finally {
-    if (guard?.acquired) await guard.release();
     if (videoPath) {
       const { cleanupVideo } = await import('./youtube-uploader-new.js');
       cleanupVideo(videoPath);

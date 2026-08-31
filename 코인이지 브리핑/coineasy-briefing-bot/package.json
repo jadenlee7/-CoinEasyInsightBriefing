@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
+    "@napi-rs/canvas": "1.0.8",
     "@sparticuz/chromium": "^149.0.0",
     "canvas": "^2.11.2",
     "fluent-ffmpeg": "^2.1.2",
