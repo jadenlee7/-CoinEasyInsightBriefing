@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 import { createCanvas, loadImage, registerFont } from 'canvas';
 import ffmpeg from 'fluent-ffmpeg';
 import * as CFG from './youtube-shorts-config.js';
-import { buildNarration, sceneForTime } from './youtube-editorial-copy.js';
+import { assertTtsDuration, buildNarration, sceneForTime } from './youtube-editorial-copy.js';
 
 const BRAND_DIR = process.env.COINEASY_BRAND_DIR
   || path.resolve(process.cwd(), '../../coineasy_brand');
@@ -186,7 +186,7 @@ function drawScene(ctx, payload, sceneIndex) {
       size: 31, weight: 'Bold', color: '#FFFFFF', align: 'center',
     });
   } else if (sceneIndex === 3) {
-    drawWrapped(ctx, '지금 시장은 이렇습니다', left, 410, { size: 68, maxWidth: 880, maxLines: 2 });
+    drawWrapped(ctx, e.marketContext, left, 390, { size: 58, maxWidth: 900, maxLines: 3, lineHeight: 1.2 });
     const cards = [
       ['BTC', t.btc_price, t.btc_change],
       ['김치프리미엄', t.kimchi_premium, '국내·글로벌 가격차'],
@@ -209,7 +209,7 @@ function drawScene(ctx, payload, sceneIndex) {
       size: 27, color: CFG.COLORS.muted,
     });
   } else {
-    drawWrapped(ctx, '매일 한 번, 알아야 할 것만', left, 480, { size: 88, maxWidth: 850, maxLines: 3, lineHeight: 1.22 });
+    drawWrapped(ctx, e.sourceCta, left, 480, { size: 78, maxWidth: 880, maxLines: 4, lineHeight: 1.22 });
     roundRect(ctx, 70, 980, 690, 116, 58, CFG.COLORS.orange);
     drawText(ctx, '텔레그램  @coiniseasy', 415, 1053, {
       size: 37, weight: 'Bold', color: '#FFFFFF', align: 'center',
@@ -247,6 +247,16 @@ async function generateTTS(payload, outDir) {
   return audioPath;
 }
 
+async function probeAudioDuration(audioPath) {
+  const duration = await new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(audioPath, (error, metadata) => {
+      if (error) reject(new Error(`ffprobe error: ${error.message}`));
+      else resolve(metadata?.format?.duration);
+    });
+  });
+  return assertTtsDuration(duration);
+}
+
 async function renderFrames(payload, outDir) {
   const totalFrames = CFG.DURATION_SECONDS * CFG.FRAME_RATE;
   const framesDir = path.join(outDir, 'frames');
@@ -262,10 +272,13 @@ async function renderFrames(payload, outDir) {
 }
 
 async function composeVideo(framePattern, audioPath, outDir) {
+  if (!audioPath || !fs.existsSync(audioPath)) throw new Error('TTS 음성 없이 영상을 조합할 수 없습니다.');
   const outputPath = path.join(outDir, `coineasy_editorial_${Date.now()}.mp4`);
   await new Promise((resolve, reject) => {
-    let command = ffmpeg().input(framePattern).inputOptions([`-framerate ${CFG.FRAME_RATE}`, '-f image2']);
-    if (audioPath && fs.existsSync(audioPath)) command = command.input(audioPath);
+    const command = ffmpeg()
+      .input(framePattern)
+      .inputOptions([`-framerate ${CFG.FRAME_RATE}`, '-f image2'])
+      .input(audioPath);
     command.outputOptions([
       `-t ${CFG.DURATION_SECONDS}`, `-c:v ${CFG.VIDEO_CODEC}`, `-preset ${CFG.PRESET}`,
       `-crf ${CFG.CRF}`, `-b:v ${CFG.VIDEO_BITRATE}`, `-pix_fmt ${CFG.PIXEL_FORMAT}`,
@@ -281,15 +294,18 @@ async function composeVideo(framePattern, audioPath, outDir) {
 
 async function generateEditorialShort(payload) {
   if (!payload?.editorial) throw new Error('기사형 쇼츠 editorial 데이터가 없습니다.');
+  if (payload?.youtube?.duration_seconds !== CFG.DURATION_SECONDS) {
+    throw new Error(`승인된 영상 길이가 ${CFG.DURATION_SECONDS}초와 다릅니다.`);
+  }
   fs.mkdirSync(CFG.OUTPUT_DIR, { recursive: true });
   const workDir = fs.mkdtempSync(path.join(CFG.OUTPUT_DIR, 'editorial-'));
   try {
     payload.assets = await loadBrandAssets();
+    const audioPath = await generateTTS(payload, workDir);
+    const audioDuration = await probeAudioDuration(audioPath);
+    console.log(`  [editorial] 필수 TTS 검증 완료 (${audioDuration.toFixed(2)}초)`);
     console.log(`  [editorial] ${CFG.DURATION_SECONDS}초 기사형 프레임 렌더링...`);
     const framePattern = await renderFrames(payload, workDir);
-    let audioPath = null;
-    try { audioPath = await generateTTS(payload, workDir); }
-    catch (error) { console.warn(`  [editorial] TTS 실패 — 자막형으로 진행: ${error.message}`); }
     return await composeVideo(framePattern, audioPath, workDir);
   } catch (error) {
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (_) {}
@@ -297,4 +313,4 @@ async function generateEditorialShort(payload) {
   }
 }
 
-export { generateEditorialShort, renderFrame };
+export { generateEditorialShort, probeAudioDuration, renderFrame };

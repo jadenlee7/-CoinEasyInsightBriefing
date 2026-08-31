@@ -64,7 +64,8 @@ const YT_DEFAULT_TAGS = [
 
 const YT_CATEGORY_ID = '27';   // News & Politics (Finance is not a standalone category)
 const YT_LANGUAGE    = 'ko';
-const YT_PRIVACY     = process.env.YT_PRIVACY_STATUS || 'public';
+// No implicit public default. The upload preflight requires one explicit value.
+const YT_PRIVACY     = String(process.env.YT_PRIVACY_STATUS || '').trim().toLowerCase();
 
 export {
   VIDEO_WIDTH,

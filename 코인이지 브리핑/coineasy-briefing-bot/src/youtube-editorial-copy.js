@@ -14,16 +14,20 @@ function sceneForTime(seconds) {
 }
 
 function buildNarration(payload) {
-  const e = payload.editorial;
-  const t = payload.texts;
-  return [
-    `${voiceCut(e.headline, 28)}.`,
-    `${voiceCut(e.fact, 44)}.`,
-    `${voiceCut(e.verdict || e.context, 42)}.`,
-    `비트코인 ${t.btc_price}, 김프 ${t.kimchi_premium}, 공포탐욕 ${t.fear_value}.`,
-    `${voiceCut(e.action, 28)}.`,
-    `출처 ${voiceCut(e.sourceLabel, 24)}.`,
-  ].join(' ');
+  const narration = String(payload?.editorial?.voiceoverKo || '').replace(/\s+/g, ' ').trim();
+  if (!narration) throw new Error('승인된 youtube.voiceover_ko가 없습니다.');
+  return narration;
 }
 
-export { buildNarration, sceneForTime, voiceCut };
+function assertTtsDuration(durationSeconds) {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error('TTS 음성 길이를 확인할 수 없습니다.');
+  }
+  if (duration > 30) {
+    throw new Error(`TTS 음성이 30초를 초과했습니다 (${duration.toFixed(2)}초).`);
+  }
+  return duration;
+}
+
+export { assertTtsDuration, buildNarration, sceneForTime, voiceCut };
