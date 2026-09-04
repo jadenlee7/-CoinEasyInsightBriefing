@@ -3,14 +3,14 @@
  * - Figma EASYWORLD 프로젝트에서 콘텐츠 카드 Export
  * - 텔레그램 채널에 이미지 + 캡션 전송
  * - 인스타그램 자동 게시 (Instagram Graph API)
- * - Typefully 자동 게시 (X + LinkedIn + Threads)
+ * - Typefully legacy 경로는 안전상 비활성 (아래 가드 참조)
  */
 
 const FIGMA_API = 'https://api.figma.com/v1';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const INSTAGRAM_API = 'https://graph.facebook.com/v19.0';
-const TYPEFULLY_API = 'https://api.typefully.com';
-const TYPEFULLY_SOCIAL_SET_ID = '235804';
+export const LEGACY_TYPEFULLY_DISABLED_REASON =
+  'legacy_typefully_path_disabled_use_coineasy_briefing_bot';
 
 // EASYWORLD 프로젝트 파일 키
 const FILE_KEY = 'SRPoM0lDRtn61Q91sFWg1D';
@@ -225,117 +225,14 @@ export async function postToInstagram(imageUrl, caption) {
 }
 
 // ═══════════════════════════════════════════════
-// Typefully 자동 게시 (X + LinkedIn + Threads)
+// Typefully legacy 경로 가드
 // ═══════════════════════════════════════════════
-export async function postToTypefully(imageUrl, caption) {
-   const apiKey = process.env.TYPEFULLY_API_KEY;
-   if (!apiKey) {
-        console.log('  ⚠️ Typefully 미설정 (TYPEFULLY_API_KEY) - 스킵');
-        return false;
-   }
-
-  console.log('  📝 Typefully 게시 중 (X + LinkedIn + Threads)...');
-
-  try {
-       // Step 1: 이미지 다운로드
-     const imgRes = await fetch(imageUrl);
-       if (!imgRes.ok) {
-              console.error(`[Typefully] 이미지 다운로드 실패: ${imgRes.status}`);
-              return false;
-       }
-       const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-       const imgBase64 = imgBuffer.toString('base64');
-
-     // Step 2: Typefully 미디어 업로드 (Typefully API v2)
-    const step1Res = await fetch(`${TYPEFULLY_API}/v2/social-sets/${TYPEFULLY_SOCIAL_SET_ID}/media/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ file_name: 'figma-content.png' }),
-    });
-
-    if (step1Res.status !== 201) {
-      const errText = await step1Res.text().catch(() => '');
-      console.error(`[Typefully] presigned URL 요청 실패: ${step1Res.status} ${errText}`);
-      return false;
-    }
-
-    const { media_id: mediaId, upload_url: uploadUrl } = await step1Res.json();
-    console.log(`  📤 media_id 획득: ${mediaId}`);
-
-    // Step 2-2: S3에 직접 PUT (presigned URL이 모든 서명 포함, 추가 헤더 X)
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      body: imgBuffer,
-    });
-
-    if (!uploadRes.ok) {
-      console.error(`[Typefully] S3 PUT 실패: ${uploadRes.status}`);
-      return false;
-    }
-    console.log(`  ⏳ S3 업로드 완료, processing 대기 중...`);
-
-    // Step 3: 미디어 처리 대기 (최대 60초, 2초 간격)
-    let mediaReady = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const statusRes = await fetch(`${TYPEFULLY_API}/v2/social-sets/${TYPEFULLY_SOCIAL_SET_ID}/media/${mediaId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      });
-      if (!statusRes.ok) continue;
-      const statusData = await statusRes.json();
-      if (statusData.status === 'ready') {
-        mediaReady = true;
-        break;
-      }
-      if (statusData.status === 'failed') {
-        console.error(`[Typefully] 미디어 처리 실패: ${statusData.error_reason || 'unknown'}`);
-        return false;
-      }
-    }
-
-    if (!mediaReady) {
-      console.error('[Typefully] 미디어 처리 타임아웃 (60초)');
-      return false;
-    }
-
-     // Step 4: 드래프트 생성 및 게시
-     const draftRes = await fetch(
-            `${TYPEFULLY_API}/v2/social-sets/${TYPEFULLY_SOCIAL_SET_ID}/drafts`,
-      {
-               method: 'POST',
-               headers: {
-                          'X-API-KEY': apiKey,
-                          'Content-Type': 'application/json',
-               },
-               body: JSON.stringify({
-                          content: caption,
-                          platforms: {
-                                       x: { enabled: true },
-                                       linkedin: { enabled: true },
-                                       threads: { enabled: true },
-                          },
-                          media_ids: [mediaId],
-                          publish_at: 'next-free-slot',
-               }),
-      }
-          );
-
-     if (!draftRes.ok) {
-            const errText = await draftRes.text();
-            console.error(`[Typefully] 드래프트 생성 실패: ${draftRes.status} ${errText}`);
-            return false;
-     }
-
-     const draftData = await draftRes.json();
-       console.log(`  ✅ Typefully 게시 완료! (draft: ${draftData.id})`);
-       return true;
-  } catch (err) {
-       console.error(`[Typefully 에러] ${err.message}`);
-       return false;
-  }
+export async function postToTypefully(_imageUrl, _caption) {
+   // This root-level prototype is not copied by the production Dockerfile.
+   // Keep it hard-disabled so a manual legacy start cannot bypass the active
+   // pipeline's exact creative allowlist, X-only reply, and +15m policy.
+   console.warn(`  ⚠️ Typefully 스킵: ${LEGACY_TYPEFULLY_DISABLED_REASON}`);
+   return false;
 }
 
 // ═══════════════════════════════════════════════

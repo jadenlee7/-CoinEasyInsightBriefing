@@ -1,6 +1,10 @@
 /**
  * 코인이지 데일리 브리핑 봇 - 메인 오케스트레이터
  *
+ * LEGACY PROTOTYPE: 루트 Dockerfile은 이 파일을 배포하지 않고
+ * coineasy-briefing-bot/src/index.js를 실행한다. 수동 실행시에도
+ * figma-content.js의 legacy Typefully 경로는 항상 fail-closed한다.
+ *
  * 사용법:
  *   npm start          → cron 모드 (매일 아침 자동 실행)
  *   npm run briefing   → 즉시 1회 실행
