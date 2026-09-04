@@ -65,10 +65,38 @@ TELEGRAM_CHANNEL_ID=-1001234567890
 | `TELEGRAM_BOT_TOKEN` | ✅ | 텔레그램 봇 토큰 |
 | `TELEGRAM_CHANNEL_ID` | ✅ | 공지 채널 Chat ID |
 | `TELEGRAM_CHAT_ID` | ❌ | 채팅방 Chat ID (추가 발송) |
+| `TYPEFULLY_API_KEY` | ✅* | Typefully 소셜 예약 발행 API 키 |
+| `TYPEFULLY_SOCIAL_SET_ID` | ✅* | CoinEasy Typefully Social Set ID |
+| `TELEGRAM_GROWTH_X_BRIEFING_AM_URL` | ❌ | exact `briefing_am` X → Telegram deep link. 없거나 틀리면 아침 CTA만 fail-closed |
+| `TELEGRAM_GROWTH_X_BRIEFING_PM_URL` | ❌ | exact `briefing_pm` X → Telegram deep link. 없거나 틀리면 저녁 CTA만 fail-closed |
 | `BRIEFING_HOUR_KST` | ❌ | 발송 시각 (KST, 기본: 8) |
 | `BRIEFING_MINUTE_KST` | ❌ | 발송 분 (기본: 0) |
 | `SAVE_BLOG_DRAFT` | ❌ | 블로그 초안 저장 (기본: true) |
 | `DEBUG` | ❌ | 디버그 모드 (기본: false) |
+
+`*` Typefully 소셜 발행을 사용할 때만 필수입니다.
+
+### X → Telegram 소통방 다리
+
+X 브리핑은 링크 없는 기본 본문과 Telegram 소통방으로 이어지는 마지막
+답글로 구성됩니다. LinkedIn과 Threads는 기존처럼 동일한 기본 본문 1건만
+전송됩니다.
+
+CTA를 활성하려면 Telegram 봇이 아래 두 creative를 정식
+allowlist에 반영한 뒤 Railway에 exact URL 두 개를 설정합니다.
+
+```env
+TELEGRAM_GROWTH_X_BRIEFING_AM_URL=https://t.me/coineasy_insight_bot?start=join_x_briefing_am
+TELEGRAM_GROWTH_X_BRIEFING_PM_URL=https://t.me/coineasy_insight_bot?start=join_x_briefing_pm
+```
+
+파이프라인은 현재 session type(`morning`/`evening`)을 명시적으로 넘겨
+`briefing_am`/`briefing_pm`을 선택합니다. 다른 봇·redirect·payload,
+교차 설정된 AM/PM URL, 알 수 없는 session type은 허용하지 않습니다.
+해당 session의 값이 없거나 exact URL과 다르면 X CTA만 생략하고 기존
+X·LinkedIn·Threads 본문은 계속 예약합니다. URL이 하나라도 포함된
+Typefully draft는 API 요청 시점으로부터 최소 15분 뒤로 `publish_at`을
+보정합니다.
 
 ## 📋 텔레그램 봇 세팅
 

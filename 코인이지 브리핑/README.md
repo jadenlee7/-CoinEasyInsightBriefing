@@ -1,5 +1,11 @@
 # 🌅 코인이지 데일리 브리핑 봇
 
+> ⚠️ 이 문서와 같은 디렉터리의 `index.js`/`figma-content.js`는 예전
+> prototype입니다. 루트 `Dockerfile`은 `coineasy-briefing-bot/`만 `/app`으로
+> 복사해 `src/index.js`를 실행합니다. legacy Typefully 함수는 수동 실행에서도
+> 항상 비활성하며, 소셜 발행 변경은 `coineasy-briefing-bot/src/`에만
+> 적용하세요.
+
 매일 아침 자동으로 크립토 시황을 수집하고, AI가 한국어 브리핑을 생성해서 텔레그램에 발송합니다.
 네이버 블로그 SEO 최적화 초안도 자동 생성됩니다.
 

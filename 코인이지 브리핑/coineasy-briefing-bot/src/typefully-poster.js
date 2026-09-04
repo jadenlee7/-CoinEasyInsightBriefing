@@ -5,11 +5,172 @@
  * 환경변수:
  *   TYPEFULLY_API_KEY       - Typefully Bearer 토큰
  *   TYPEFULLY_SOCIAL_SET_ID - Social Set ID (GET /v2/social-sets 로 확인)
+ *   TELEGRAM_GROWTH_X_BRIEFING_AM_URL - 승인된 아침 X → Telegram deep link
+ *   TELEGRAM_GROWTH_X_BRIEFING_PM_URL - 승인된 저녁 X → Telegram deep link
  */
 
 // Using global fetch (Node 18+)
 
 const API_BASE = 'https://api.typefully.com';
+const DEFAULT_PUBLISH_DELAY_MS = 60_000;
+const URL_PUBLISH_DELAY_MS = 15 * 60_000;
+const TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE = Object.freeze({
+    morning: Object.freeze({
+        creative: 'briefing_am',
+        envName: 'TELEGRAM_GROWTH_X_BRIEFING_AM_URL',
+        url: 'https://t.me/coineasy_insight_bot?start=join_x_briefing_am',
+        lead: '오늘 아침 시장 해석, 코인이지 소통방에서 바로 이어서 이야기해요.',
+    }),
+    evening: Object.freeze({
+        creative: 'briefing_pm',
+        envName: 'TELEGRAM_GROWTH_X_BRIEFING_PM_URL',
+        url: 'https://t.me/coineasy_insight_bot?start=join_x_briefing_pm',
+        lead: '오늘 저녁 시장 해석, 코인이지 소통방에서 바로 이어서 이야기해요.',
+    }),
+});
+const CANONICAL_TELEGRAM_GROWTH_URLS = Object.freeze(
+    Object.fromEntries(
+        Object.entries(TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE)
+            .map(([type, config]) => [type, config.url])
+    )
+);
+const TELEGRAM_GROWTH_URL_ENVS = Object.freeze(
+    Object.fromEntries(
+        Object.entries(TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE)
+            .map(([type, config]) => [type, config.envName])
+    )
+);
+
+function canonicalTelegramGrowthReplyText(briefingType) {
+    const config = TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE[briefingType];
+    if (!config) throw new Error('invalid_briefing_type');
+    return `${config.lead}\n\n원탭 입장 👇\n${config.url}`;
+}
+
+/**
+ * Resolve the operator-owned X acquisition link.
+ *
+ * The exact URL is intentionally allowlisted. A missing value, typo, alternate
+ * bot, redirect, or undeployed creative must not leak into a public draft.
+ * Existing root posts still publish when this optional CTA fails closed.
+ */
+function resolveTelegramGrowthXReply(briefingType, env = process.env) {
+    const config = TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE[briefingType];
+    if (!config) {
+        return { enabled: false, reason: 'invalid_briefing_type', text: null };
+    }
+
+    const configuredUrl = String(env[config.envName] || '').trim();
+    if (!configuredUrl) {
+        return { enabled: false, reason: 'missing_canonical_url', text: null };
+    }
+    if (configuredUrl !== config.url) {
+        return { enabled: false, reason: 'invalid_canonical_url', text: null };
+    }
+    return {
+        enabled: true,
+        reason: null,
+        creative: config.creative,
+        text: canonicalTelegramGrowthReplyText(briefingType),
+    };
+}
+
+function normalizedCanonicalXReply(xReplyText) {
+    const allowedReplies = Object.keys(TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE)
+        .map(canonicalTelegramGrowthReplyText);
+    return allowedReplies.includes(xReplyText) ? xReplyText : null;
+}
+
+function buildPlatformsPayload(text, options = {}) {
+    const {
+        platforms = ['x', 'linkedin', 'threads'],
+        mediaIds = null,
+        xReplyText = null,
+    } = options;
+    const canonicalXReply = normalizedCanonicalXReply(xReplyText);
+    const platformsPayload = {};
+
+    for (const platform of platforms) {
+        const primaryPost = { text };
+        if (mediaIds && mediaIds.length > 0) {
+            // v1 API returns URL strings, v2 returns IDs.
+            if (typeof mediaIds[0] === 'string' && mediaIds[0].startsWith('http')) {
+                primaryPost.media_urls = mediaIds;
+            } else {
+                primaryPost.media_ids = mediaIds;
+            }
+        }
+
+        const posts = [primaryPost];
+        if (platform === 'x' && canonicalXReply) {
+            // Keep the root post link-free. Only X receives the acquisition reply.
+            posts.push({ text: canonicalXReply });
+        }
+        platformsPayload[platform] = { enabled: true, posts };
+    }
+
+    return platformsPayload;
+}
+
+function payloadContainsUrl(platformsPayload) {
+    return Object.values(platformsPayload).some(platform =>
+        platform.posts.some(post => /https?:\/\//i.test(post.text || ''))
+    );
+}
+
+function resolvePublishAt(publishAt, options = {}) {
+    const {
+        containsUrl = false,
+        nowMs = Date.now(),
+    } = options;
+    const parsedNowMs = Number(nowMs);
+    if (!Number.isFinite(parsedNowMs)) {
+        throw new Error('invalid_publish_clock');
+    }
+
+    let requestedMs;
+    if (publishAt == null) {
+        requestedMs = parsedNowMs + DEFAULT_PUBLISH_DELAY_MS;
+    } else {
+        requestedMs = Date.parse(publishAt);
+        if (!Number.isFinite(requestedMs)) {
+            throw new Error('invalid_publish_at');
+        }
+    }
+
+    if (containsUrl) {
+        requestedMs = Math.max(requestedMs, parsedNowMs + URL_PUBLISH_DELAY_MS);
+    }
+    return new Date(requestedMs).toISOString();
+}
+
+function buildTypefullyDraftPayload(text, options = {}) {
+    const {
+        platforms = ['x', 'linkedin', 'threads'],
+        publishAt = null,
+        draftTitle = null,
+        mediaIds = null,
+        xReplyText = null,
+        nowMs = Date.now(),
+    } = options;
+    const platformsPayload = buildPlatformsPayload(text, {
+        platforms,
+        mediaIds,
+        xReplyText,
+    });
+    const body = {
+        platforms: platformsPayload,
+        publish_at: resolvePublishAt(publishAt, {
+            containsUrl: payloadContainsUrl(platformsPayload),
+            nowMs,
+        }),
+    };
+
+    if (draftTitle) {
+        body.draft_title = draftTitle;
+    }
+    return body;
+}
 
 // ============================================================
 // Typefully API 헬퍼
@@ -53,49 +214,29 @@ async function listSocialSets() {
 }
 
 // ============================================================
-// Typefully 드래프트 생성 + 즉시 발행 (X, LinkedIn, Threads)
+// Typefully 드래프트 생성 + 예약 발행 (X, LinkedIn, Threads)
 // ============================================================
 
 async function postToSocial(text, options = {}) {
     const {
           platforms = ['x', 'linkedin', 'threads'],
-          publishAt = null,             // ISO날짜 | null(즉시 발행)
+          publishAt = null,             // ISO날짜 | null(기본 1분, URL이 있으면 최소 15분)
           draftTitle = null,
           mediaIds = null,             // 미디어 ID 배열 (Typefully 업로드 후)
+          xReplyText = null,           // canonical Telegram CTA; X에만 추가
+          nowMs = Date.now(),          // deterministic payload tests
     } = options;
 
   const socialSetId = getSocialSetId();
-
-  // 플랫폼별 posts 구성
-  const platformsPayload = {};
-
-  for (const platform of platforms) {
-        const post = { text };
-        if (mediaIds && mediaIds.length > 0) {
-                // v1 API returns URL strings, v2 returns IDs
-                if (typeof mediaIds[0] === 'string' && mediaIds[0].startsWith('http')) {
-                        post.media_urls = mediaIds;
-                } else {
-                        post.media_ids = mediaIds;
-                }
-        }
-        platformsPayload[platform] = {
-                enabled: true,
-                posts: [post],
-        };
-  }
-
-  // publish_at: ISO 8601 (Typefully v2 API 필드명)
-  const publishAtIso = publishAt || new Date(Date.now() + 60_000).toISOString();
-
-  const body = {
-        platforms: platformsPayload,
-        publish_at: publishAtIso,
-  };
-
-  if (draftTitle) {
-        body.draft_title = draftTitle;
-  }
+  const body = buildTypefullyDraftPayload(text, {
+        platforms,
+        publishAt,
+        draftTitle,
+        mediaIds,
+        xReplyText,
+        nowMs,
+  });
+  const publishAtIso = body.publish_at;
 
   const enabledPlatforms = platforms.join(', ');
     console.log(`[Typefully] 포스팅 중... (${enabledPlatforms}) | ${text.length}자 | publish_at: ${publishAtIso}`);
@@ -213,7 +354,12 @@ async function uploadMedia(imageBuffer, filename = 'banner.png') {
 // 편의 함수: 텍스트 + 배너 이미지 → 소셜 포스팅
 // ============================================================
 
-async function postBriefingToSocial(text, bannerBuffer = null, publishAt = null) {
+async function postBriefingToSocial(
+    text,
+    bannerBuffer = null,
+    publishAt = null,
+    briefingType = null
+) {
     try {
       let mediaIds = null;
 
@@ -225,14 +371,28 @@ async function postBriefingToSocial(text, bannerBuffer = null, publishAt = null)
               }
       }
 
+      const growthReply = resolveTelegramGrowthXReply(briefingType);
+      if (growthReply.enabled) {
+              console.log(`[Typefully] X Telegram CTA 활성: ${growthReply.creative} (마지막 답글)`);
+      } else {
+              console.warn(`[Typefully] X Telegram CTA 생략: ${growthReply.reason}`);
+      }
+
       const result = await postToSocial(text, {
               platforms: ['x', 'linkedin', 'threads'],
-              publishAt: publishAt,  // null = 즉시 발행 (1분 후), 또는 호출자가 지정한 ISO8601
+              // URL이 포함되면 payload builder가 최소 15분 후로 보정한다.
+              publishAt,
               draftTitle: `코인이지 데일리 브리핑 ${new Date().toISOString().slice(0, 10)}`,
               mediaIds,
+              xReplyText: growthReply.text,
       });
 
-      return result;
+      return {
+              ...result,
+              xTelegramCtaIncluded: Boolean(result.success && growthReply.enabled),
+              xTelegramCtaReason: growthReply.reason,
+              xTelegramCreative: growthReply.enabled ? growthReply.creative : null,
+      };
 
     } catch (err) {
           console.error(`[Typefully 포스팅 에러] ${err.message}`);
@@ -244,8 +404,18 @@ async function postBriefingToSocial(text, bannerBuffer = null, publishAt = null)
 }
 
 export {
+  CANONICAL_TELEGRAM_GROWTH_URLS,
+  DEFAULT_PUBLISH_DELAY_MS,
+  TELEGRAM_GROWTH_CONFIG_BY_BRIEFING_TYPE,
+  TELEGRAM_GROWTH_URL_ENVS,
+  URL_PUBLISH_DELAY_MS,
+  buildPlatformsPayload,
+  buildTypefullyDraftPayload,
+  canonicalTelegramGrowthReplyText,
   postToSocial,
   uploadMedia,
   postBriefingToSocial,
+  resolvePublishAt,
+  resolveTelegramGrowthXReply,
   listSocialSets
 };

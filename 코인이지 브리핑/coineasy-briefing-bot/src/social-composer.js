@@ -1,7 +1,8 @@
 // src/social-composer.js
 // =======================
-// Typefully(X/LinkedIn/Threads)용 영어 카피 컴포저. 데이터 기반 — LLM 호출 없음.
-// 채널 정책: 전부 영어, 해시태그/외부 링크/팔로우 CTA 금지, em dash 금지,
+// Typefully(X/LinkedIn/Threads) 기본 본문용 영어 카피 컴포저. 데이터 기반 — LLM 호출 없음.
+// 기본 본문 정책: 전부 영어, 해시태그/외부 링크/팔로우 CTA 금지, em dash 금지.
+// 승인된 Telegram 링크는 typefully-poster.js가 X의 마지막 답글에만 붙인다.
 // X 네이티브 리듬 (한 줄 한 생각, 줄 사이 빈 줄, 한 줄 60자 이내, 전체 272자 이내).
 
 const MONTH_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

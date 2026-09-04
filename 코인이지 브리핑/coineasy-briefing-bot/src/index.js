@@ -131,7 +131,7 @@ async function runBriefingPipeline() {
     }
 
     // Step 4: Typefully 소셜 포스팅 (X + LinkedIn + Threads)
-    // 채널 정책: 전부 영어, 해시태그/링크/팔로우 CTA 금지 (데이터 기반 EN 컴포저 사용)
+    // 기본 본문은 영어·무링크로 유지하고, 검증된 Telegram CTA는 X 마지막 답글에만 붙인다.
     if (DIGEST_V2_DRYRUN) {
       console.log('\n🧪 Step 4: DIGEST_V2_DRYRUN — Typefully 발행 스킵, 렌더/캡션만 저장');
       try {
@@ -178,7 +178,12 @@ async function runBriefingPipeline() {
         }
 
         console.log(`  📝 소셜 텍스트: ${socialText.length}자`);
-        const socialResult = await postBriefingToSocial(socialText, socialImage);
+        const socialResult = await postBriefingToSocial(
+          socialText,
+          socialImage,
+          null,
+          session.type
+        );
         if (socialResult.success) {
           console.log(`  ✅ Typefully 포스팅 완료!`);
           if (socialResult.xUrl) console.log(`    → X: ${socialResult.xUrl}`);
