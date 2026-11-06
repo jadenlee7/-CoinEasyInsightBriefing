@@ -212,9 +212,9 @@ function buildPayloadFromData(data) {
 
   const fearValue = parseInt(fg?.value || 50);
   function fearNote(fgv, mc) {
-    if (fgv < 25 && mc > 0) return '두려움인데 가격은 상승? 역설적 신호!';
+    if (fgv < 25 && mc > 0) return '공포 구간에서도 가격은 올랐다';
     if (fgv < 25) return '극단적 공포 — 분할 매수 검토 구간';
-    if (fgv > 75 && mc < 0) return '탐욕인데 조정? 과열 경계';
+    if (fgv > 75 && mc < 0) return '탐욕 구간에 조정이 겹쳤다';
     if (fgv > 75) return '탐욕 구간 — 차익 실현 검토';
     if (fgv < 45) return '여전히 공포 구간이지만 시장은 꿋꿋';
     if (fgv > 55) return '탐욕 우세 — 리스크 관리';
@@ -248,7 +248,7 @@ function buildPayloadFromData(data) {
     kimchi_note: kimchiNote(premiumPct),
     fear_value: String(fg?.value ?? '--'),
     fear_label: fg?.label || '--',
-    fear_note: '두려움인데 가격은 상승? 역설적 신호!',  // Figma 템플릿 정적 텍스트와 일치
+    fear_note: fearNote(fearValue, avgChange),
     defi_1_name: defiItems[0].name,
     defi_1_note: defiItems[0].tvl ? `TVL ${defiItems[0].tvl}` : '',
     defi_1_change: fmtPct(defiItems[0].change1d),

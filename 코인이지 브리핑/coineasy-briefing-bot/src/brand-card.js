@@ -157,6 +157,59 @@ function getDefiItems(data) {
   return items.slice(0, 3);
 }
 
+const ONE_LINE_MAX = 90;
+
+export function assertAnswerFormTitle(title) {
+  const text = String(title ?? '').trim();
+  if (!text) throw new Error('제목이 비어 있습니다. 주어가 있는 답형 제목을 쓰세요.');
+  if (/[?？]/.test(text)) throw new Error('제목은 답형이어야 합니다. 물음표를 쓰지 않습니다.');
+  return text;
+}
+
+function oneLine(value, field) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (text.length > ONE_LINE_MAX) throw new Error(`${field}은 설명문 없이 한 줄만 적습니다.`);
+  return text;
+}
+
+function mediaName(value) {
+  const text = oneLine(value, '출처');
+  if (/https?:|www\./i.test(text)) throw new Error('출처는 URL이 아니라 매체명입니다.');
+  return text;
+}
+
+// Insights GUIDE 카드. 히어로(썸네일)와 상세 카드 구성을 섞지 않는다.
+export function buildGuideCtx(input = {}) {
+  const layout = input.layout === 'hero' ? 'hero' : 'detail';
+  const subject = oneLine(input.subject, '주어');
+  if (layout === 'hero' && !subject) throw new Error('히어로에는 주어(subject)가 필요합니다.');
+  return {
+    card_type: 'guide',
+    layout,
+    card_w: input.card_w || (layout === 'hero' ? 1600 : 1200),
+    card_h: input.card_h || (layout === 'hero' ? 900 : 1500),
+    badge_flag: false,
+    headline: assertAnswerFormTitle(input.headline),
+    subject,
+    answer: oneLine(input.answer, '요약'),
+    steps: Array.isArray(input.steps) ? input.steps : [],
+    flows: Array.isArray(input.flows) ? input.flows : [],
+    icons: Array.isArray(input.icons) ? input.icons : [],
+    compare: Array.isArray(input.compare) ? input.compare.map(item => ({
+      label: oneLine(item.label, '비교 제목'),
+      line: oneLine(item.line, '비교 한 줄'),
+    })) : [],
+    activity_title: oneLine(input.activity_title, '활동 제목'),
+    activity_note: oneLine(input.activity_note, '활동 설명'),
+    basis: oneLine(input.basis, '근거'),
+    source_name: mediaName(input.source_name),
+    mascot: layout === 'hero' ? (input.mascot || '') : '',
+    series: input.series || 'INSIGHTS GUIDE',
+    date_label: input.date_label || '',
+  };
+}
+
 // 데이터 기반 인용구/인사이트 폴백 (LLM 불가/EN 카드용 — LLM 로직 무수정 원칙)
 export function buildDataInsight(data, lang) {
   const fg = parseInt(data?.fearGreed?.value ?? 50, 10);

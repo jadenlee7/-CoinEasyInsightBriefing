@@ -356,9 +356,9 @@ function kimchiNote(pct) {
 
 function fearNote(fg, marketChange) {
         if (fg < 25 && marketChange > 0)
-                    return '두려움인데 가격은 상승? 역설적 신호!';
+                    return '공포 구간에서도 가격은 올랐다';
         if (fg < 25) return '극단적 공포 — 분할 매수 검토 구간';
-        if (fg > 75 && marketChange < 0) return '탐욕인데 조정? 과열 경계';
+        if (fg > 75 && marketChange < 0) return '탐욕 구간에 조정이 겹쳤다';
         if (fg > 75) return '탐욕 구간 — 차익 실현 검토';
         if (fg < 45) return '여전히 공포 구간이지만 시장은 꿋꿋';
         if (fg > 55) return '탐욕 우세 — 리스크 관리';
@@ -498,5 +498,6 @@ export {
         fetchDefiHot,
         fetchTrending,
         generateQuote,
+        fearNote,
   fetchETFFlow,
 };
