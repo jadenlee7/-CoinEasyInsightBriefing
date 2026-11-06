@@ -148,6 +148,7 @@ test('strict handoff validation and mapping use only exact approved scenes and m
   assert.equal(payload.texts.fear_label, undefined);
   assert.equal(payload.texts.btc_change, undefined);
   assert.equal(payload.article.canonicalNaverUrl, handoff.canonical_naver_url);
+  assert.equal(payload.editorial.sourceLabel, '금융위원회');
 });
 
 test('handoff rejects reordered scenes, incomplete metrics, wrong date and non-Naver canonical URL', () => {

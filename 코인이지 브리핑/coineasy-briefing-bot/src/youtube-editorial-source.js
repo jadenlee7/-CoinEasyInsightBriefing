@@ -241,9 +241,15 @@ function validateApprovedArticleHandoff(handoff, expectedDate, secret, now = new
   return handoff;
 }
 
+const MEDIA_BY_HOST = {
+  'fsc.go.kr': '금융위원회',
+};
+
 function sourceLabel(link) {
-  try { return new URL(link).hostname.replace(/^www\./, ''); }
-  catch (_) { return '공식 출처'; }
+  try {
+    const host = new URL(link).hostname.replace(/^www\./, '');
+    return MEDIA_BY_HOST[host] || host;
+  } catch (_) { return '공식 출처'; }
 }
 
 function buildEditorialFromHandoff(handoff) {

@@ -16,7 +16,7 @@ const BRAND_DIR = process.env.COINEASY_BRAND_DIR
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../coineasy_brand');
 const BRAND_ASSET_DIR = path.join(BRAND_DIR, 'assets', 'brand');
 const BRAND_FONT_DIR = path.join(BRAND_DIR, 'assets', 'fonts');
-const LABELS = ['오늘의 질문', '확인된 사실', '사실과 해석', '시장 맥락', '오늘의 행동', '출처 · 더 알아보기'];
+const LABELS = ['오늘의 결론', '확인된 사실', '사실과 해석', '시장 맥락', '오늘의 행동', '출처 · 더 알아보기'];
 const WEIGHTS = ['Regular', 'Medium', 'Bold', 'ExtraBold'];
 let fontsRegistered = false;
 
@@ -40,7 +40,11 @@ async function loadBrandAssets() {
 }
 
 function compact(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
-function font(ctx, size, weight) { ctx.font = `${size}px "Pretendard ${weight}"`; }
+function font(ctx, size, weight) {
+  ctx.font = `${size}px "Pretendard ${weight}"`;
+  // CSS letter-spacing: -2.5% — canvas takes a px length, not em.
+  try { ctx.letterSpacing = `${(-0.025 * size).toFixed(2)}px`; } catch (_) { /* tracking unsupported */ }
+}
 function line(ctx, x, y, width, color = '#DFCFC5', height = 2) {
   ctx.fillStyle = color; ctx.fillRect(x, y, width, height);
 }
@@ -107,18 +111,14 @@ function drawScene(ctx, payload, sceneIndex) {
   const e = payload.editorial;
   if (sceneIndex === 0) {
     drawBlock(ctx, e.headline, 72, 460, { size: 116, minSize: 66, maxLines: 3 });
-    drawText(ctx, '숫자보다 맥락, 속보보다 확인', 76, 976, 42, 'Medium', CFG.COLORS.muted);
     drawMascot(ctx, payload.assets, 526, 1070, 452);
     line(ctx, 76, 1190, 260, CFG.COLORS.orange, 14);
     line(ctx, 322, 1190, 14, CFG.COLORS.orange, 108);
     line(ctx, 322, 1284, 170, CFG.COLORS.orange, 14);
-    drawText(ctx, e.sourceLabel, 76, 1540, 32, 'Bold');
   } else if (sceneIndex === 1) {
     drawText(ctx, '확인된 사실', 76, 405, 53, 'Bold', CFG.COLORS.orange);
     drawBlock(ctx, e.fact, 72, 588, { size: 84, minSize: 44, maxLines: 7 });
     line(ctx, 76, 1390, 928);
-    drawText(ctx, e.sourceLabel, 76, 1500, 31, 'Medium', CFG.COLORS.muted);
-    drawText(ctx, '원문 발표·집계 기준을 구분해서 읽으세요.', 76, 1560, 33, 'Medium');
   } else if (sceneIndex === 2) {
     drawText(ctx, '왜 중요한가', 76, 405, 53, 'Bold', CFG.COLORS.orange);
     drawBlock(ctx, e.verdict || e.context, 72, 590, { size: 82, minSize: 44, maxLines: 7 });

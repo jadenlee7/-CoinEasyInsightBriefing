@@ -11,7 +11,7 @@ process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'test-dummy-key
 
 const { BRIEFING_FOOTER_HTML } = await import('./generator.js');
 const { composeEnglishDigest, MAX_LINE_LEN, MAX_TOTAL_LEN } = await import('./social-composer.js');
-const { buildDigestCtx, fngNeedle, resolveBrandDir } = await import('./brand-card.js');
+const { buildDigestCtx, buildGuideCtx, fngNeedle, resolveBrandDir } = await import('./brand-card.js');
 
 const EM_DASH = '—';
 
@@ -144,7 +144,8 @@ test('템플릿: digest 브랜치 렌더 결과 규약 준수', async () => {
   assert.match(html, /\$108,423/);
   assert.match(html, /@Coiniseasy/);
   assert.match(html, /#FFF8F0/);
-  assert.match(html, /GmarketSansTTFBold\.ttf/);
+  assert.match(html, /Pretendard-Bold\.otf/);
+  assert.match(html, /letter-spacing:-0\.025em/);
   assert.ok(!/GTM Agency/i.test(html), 'no banned slogan');
   assert.ok(!html.includes('flag_kr.png'), 'badge_flag=false: no flag');
 });
@@ -172,4 +173,58 @@ test('템플릿: 기존 kimchi 브랜치 하위호환 (무수정 확인)', async
   assert.match(html, /flag_kr\.png/);          // badge_flag 기본값 true 유지
   assert.match(html, /easyboy_plain\.png/);    // mascot 렌더 유지
   assert.match(html, /KIMCHI CHECK · BTC/);
+});
+
+test('템플릿: INSIGHTS GUIDE 히어로는 답형 제목·주어·아이콘, 상세 카드와 구성이 다르다', async () => {
+  const brandDir = resolveBrandDir();
+  const tpl = await readFile(path.join(brandDir, 'templates', 'korea_card.html.j2'), 'utf8');
+  const env = new nunjucks.Environment(null, { autoescape: true });
+  const hero = buildGuideCtx({
+    layout: 'hero',
+    headline: 'USDT와 USDC는 같은 달러 코인이 아니다',
+    subject: 'USDT·USDC',
+    icons: [
+      { kind: 'trade', label: '거래' },
+      { kind: 'transfer', label: '전송' },
+      { kind: 'mark', label: '구분' },
+    ],
+    mascot: 'easyboy_plain',
+    source_name: 'CoinGecko',
+  });
+  const heroHtml = env.renderString(tpl, { assets: 'file:///assets', ...hero });
+  assert.match(heroHtml, /USDT와 USDC는 같은 달러 코인이 아니다/);
+  assert.match(heroHtml, /USDT·USDC/);
+  assert.match(heroHtml, /class="gicon icon-trade"/);
+  assert.match(heroHtml, /class="gicon icon-transfer"/);
+  assert.match(heroHtml, /aria-label="거래"/);
+  assert.match(heroHtml, /aria-label="전송"/);
+  assert.match(heroHtml, /guide-mascot/);
+  assert.match(heroHtml, /pc-safe/);
+  assert.equal(heroHtml.split('CoinGecko').length - 1, 1);
+  assert.doesNotMatch(heroHtml, /class="timeline"/);
+  assert.doesNotMatch(heroHtml, /class="mascot"/);
+  assert.ok(!heroHtml.includes('?'));
+
+  const detail = buildGuideCtx({
+    layout: 'detail',
+    headline: '가격 영향과 슬리피지는 다른 항목이다',
+    answer: '주문 전 두 항목을 따로 확인한다',
+    steps: [{ label: '주문' }, { label: '체결' }, { label: '정산' }],
+    flows: [{ kind: 'trade', label: '거래' }, { kind: 'transfer', label: '전송' }],
+    compare: [{ label: '가격 영향' }, { label: '슬리피지' }],
+    activity_title: '일정 기간의 활동',
+    activity_note: '그 기간의 기록을 한곳에 모은다',
+    basis: '같은 자금이 지갑을 여러 번 거치면 전송 기록에 반복된다',
+    source_name: 'CoinGecko',
+  });
+  const detailHtml = env.renderString(tpl, { assets: 'file:///assets', ...detail });
+  assert.match(detailHtml, /class="timeline"/);
+  assert.match(detailHtml, /가격 영향/);
+  assert.match(detailHtml, /슬리피지/);
+  assert.match(detailHtml, /일정 기간의 활동/);
+  assert.doesNotMatch(detailHtml, /<img class="guide-mascot"/);
+  assert.equal(detailHtml.split('CoinGecko').length - 1, 1);
+  assert.throws(() => buildGuideCtx({ layout: 'hero', headline: '수수료가 왜 다를까?', subject: 'USDT·USDC' }), /답형/);
+  assert.throws(() => buildGuideCtx({ layout: 'hero', headline: '교환 비용을 구분한다' }), /주어/);
+  assert.throws(() => buildGuideCtx({ headline: '교환 비용을 구분한다', source_name: 'https://example.com' }), /매체명/);
 });

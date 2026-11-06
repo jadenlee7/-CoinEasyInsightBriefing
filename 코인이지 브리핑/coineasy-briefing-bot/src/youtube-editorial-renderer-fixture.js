@@ -1,7 +1,7 @@
 // Synthetic renderer validation only. Never sign, enqueue or upload this fixture.
 function rendererSmokeFixture() {
   const voiceoverSegmentsKo = [
-    '숫자 하나로 판단해도 될까요?',
+    '숫자 하나만으로 판단하지 않는다',
     '이 영상은 디자인을 확인하는 비공개 샘플입니다.',
     '확인된 사실과 해석은 나누어 읽어야 합니다.',
     '화면의 시장 지표는 테스트용 가상 수치입니다.',
@@ -13,7 +13,7 @@ function rendererSmokeFixture() {
     privatePreview: true,
     editorialDate: '2026-09-01',
     editorial: {
-      headline: '숫자 하나로 판단해도 될까요?',
+      headline: '숫자 하나만으로 판단하지 않는다',
       fact: '비공개 디자인 검증용 샘플입니다. 실제 시장 사실을 설명하는 영상이 아닙니다.',
       verdict: '확인된 사실과 해석은 구분해서 읽어야 합니다.',
       marketContext: '테스트용 가상 지표입니다.',
