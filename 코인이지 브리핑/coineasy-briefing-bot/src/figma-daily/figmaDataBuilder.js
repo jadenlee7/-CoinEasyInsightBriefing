@@ -303,14 +303,15 @@ async function generateQuote(marketSummary) {
                                                     'content-type': 'application/json',
                                 },
                                 body: JSON.stringify({
-                                                    model: 'claude-opus-4-8',
+                                                    model: 'claude-sonnet-5-5',
+                                                    thinking: { type: "between_tools" },
                                                     max_tokens: 300,
                                                     messages: [{ role: 'user', content: prompt }],
                                 }),
                 });
                 if (!r.ok) throw new Error(`Anthropic API ${r.status}`);
                 const data = await r.json();
-                let text = data.content[0].text.trim();
+                let text = data.content.filter(block => block.type === 'text').map(block => block.text).join('').trim();
                 text = text.replace(/```json/g, '').replace(/```/g, '').trim();
                 const parsed = JSON.parse(text);
                 return { line1: parsed.line1, line2: parsed.line2 };

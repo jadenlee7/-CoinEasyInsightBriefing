@@ -115,7 +115,8 @@ ${data.trending ? data.trending.map(c =>
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5-5',
+      thinking: { type: "between_tools" },
       max_tokens: 2000,
       system: TELEGRAM_SYSTEM_PROMPT,
       messages: [
@@ -126,7 +127,7 @@ ${data.trending ? data.trending.map(c =>
       ],
     });
 
-    const text = response.content[0]?.text || '';
+    const text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
     console.log(`[브리핑 생성] 텔레그램 완료 (${text.length}자)`);
     return text;
   } catch (err) {
@@ -160,7 +161,8 @@ DeFi 상승: ${JSON.stringify(data.defi?.topGainers, null, 2)}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5-5',
+      thinking: { type: "between_tools" },
       max_tokens: 4000,
       system: BLOG_SYSTEM_PROMPT,
       messages: [
@@ -171,7 +173,7 @@ DeFi 상승: ${JSON.stringify(data.defi?.topGainers, null, 2)}
       ],
     });
 
-    const text = response.content[0]?.text || '';
+    const text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
     console.log(`[블로그 초안] 완료 (${text.length}자)`);
     return text;
   } catch (err) {

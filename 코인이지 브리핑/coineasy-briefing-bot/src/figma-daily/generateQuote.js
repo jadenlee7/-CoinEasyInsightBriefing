@@ -21,13 +21,14 @@ export async function generateDailyQuote(data) {
           const userMsg = `오늘 시장: BTC $${data.btcPrice} (${data.btcChange24h}%), 공포탐욕 ${data.fearGreedValue} (${data.fearGreedLabel}), 김프 ${data.kimchiPremium}%`;
 
       const response = await client.messages.create({
-              model: 'claude-opus-4-8',
+              model: 'claude-sonnet-5-5',
+              thinking: { type: "between_tools" },
               max_tokens: 200,
               system: QUOTE_PROMPT,
               messages: [{ role: 'user', content: userMsg }],
       });
 
-      const text = response.content[0]?.text || '';
+      const text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
           const match = text.match(/\{[\s\S]*\}/);
           if (match) {
                   return JSON.parse(match[0]);
