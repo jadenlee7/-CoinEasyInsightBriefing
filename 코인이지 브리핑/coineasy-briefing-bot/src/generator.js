@@ -232,7 +232,8 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
 
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5-5',
+      thinking: { type: "between_tools" },
       max_tokens: 800,
       system: TELEGRAM_SYSTEM_PROMPT,
       messages: [
@@ -243,7 +244,7 @@ ${data.trending ? data.trending.slice(0, 3).map((c, i) =>
       ],
     });
 
-    const text = response.content[0]?.text || '';
+    const text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
     if (!text.trim()) {
       // AI가 빈 응답 → fallback
       console.warn('[브리핑 생성] AI 빈 응답 — fallback 브리핑 사용');
@@ -284,7 +285,8 @@ DeFi 상승: ${JSON.stringify(data.defi?.topGainers, null, 2)}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5-5',
+      thinking: { type: "between_tools" },
       max_tokens: 4000,
       system: BLOG_SYSTEM_PROMPT,
       messages: [
@@ -295,7 +297,7 @@ DeFi 상승: ${JSON.stringify(data.defi?.topGainers, null, 2)}
       ],
     });
 
-    const text = response.content[0]?.text || '';
+    const text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
     console.log(`[블로그 초안] 완료 (${text.length}자)`);
     return text;
   } catch (err) {
@@ -328,7 +330,8 @@ ${telegramBriefing}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5-5',
+      thinking: { type: "between_tools" },
       max_tokens: 500,
       system: X_POST_SYSTEM_PROMPT,
       messages: [
@@ -339,7 +342,7 @@ ${telegramBriefing}
       ],
     });
 
-    let text = response.content[0]?.text || '';
+    let text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
     // 해시태그 강제 제거 (#으로 시작하는 단어 모두 제거)
     text = text.replace(/#[\w가-힣]+/g, '').replace(/\n{2,}/g, '\n').trim();
     const trimmed = text.length > 280 ? text.substring(0, 277) + '...' : text;
@@ -422,7 +425,8 @@ ${telegramBriefing}
 
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5-5',
+      thinking: { type: "between_tools" },
       max_tokens: 1000,
       system: SHORTS_SYSTEM_PROMPT,
       messages: [
@@ -433,7 +437,7 @@ ${telegramBriefing}
       ],
     });
 
-    const text = response.content[0]?.text || '';
+    const text = response.content.filter(block => block.type === 'text').map(block => block.text).join('');
 
     // JSON 파싱
     const jsonMatch = text.match(/\{[\s\S]*\}/);
